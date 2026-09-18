@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07111f"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="style.css">
+<title>Forex Macro Assistant</title></head><body>
+<header><div><small>FOREX MACRO ASSISTANT • v2</small><h1>Macro → Divergence → Technicals</h1></div><button id="install" hidden>Install</button></header>
+<nav id="tabs"><button class="active" data-p="home">Scanner</button><button data-p="macro">Macro</button><button data-p="market">Market</button><button data-p="risk">Risk</button><button data-p="journal">Journal</button><button data-p="settings">Settings</button></nav>
+<main>
+<section id="home" class="panel active">
+<div class="card"><div class="toolbar"><label>Pair<select id="pair"></select></label><button id="scan">Run analysis</button></div>
+<div class="decision"><small>ACTION</small><strong id="action">WAIT</strong><p id="summary">Run the analysis.</p></div>
+<div class="chips"><span id="differential">Differential —</span><span id="divergence">Divergence —</span><span id="technical">Technical —</span></div></div>
+<div class="grid"><div class="card"><h2>Why this action?</h2><ul id="why"></ul></div><div class="card"><h2>Data status</h2><p id="dataStatus">Checking providers…</p><button id="refresh">Refresh live data</button></div></div>
+<div class="card"><h2>Trade plan</h2><div id="plan">No setup yet.</div></div>
+</section>
+<section id="macro" class="panel"><div class="card"><h2>Currency dashboard</h2><p>Score each currency from -10 to +10 using growth, inflation, central bank, rate expectations and bond yields.</p><div id="currencies"></div></div><div class="card"><h2>Momentum</h2><p>Enter last week's and this week's score to detect whether the fundamental thesis is strengthening or weakening.</p><div id="momentum"></div></div></section>
+<section id="market" class="panel"><div class="card"><h2>Live market</h2><div id="quote">No quote loaded.</div><div id="prices"></div></div><div class="card"><h2>Economic calendar</h2><div id="calendar">Connect Trading Economics in Settings.</div></div></section>
+<section id="risk" class="panel"><div class="card"><h2>Risk calculator</h2><div class="form"><label>Account balance<input id="bal" type="number" value="1000"></label><label>Risk %<input id="rp" type="number" step=".1" value="1"></label><label>Stop (pips)<input id="stop" type="number" value="50"></label><label>Value/pip/lot<input id="pv" type="number" step=".01" value="10"></label><button id="calc">Calculate</button></div><h2 id="lot">Lot size —</h2></div></section>
+<section id="journal" class="panel"><div class="card"><h2>Journal</h2><input id="jp" placeholder="Pair"><textarea id="jn" placeholder="Thesis, divergence, confirmation, result"></textarea><button id="save">Save</button><div id="logs"></div></div></section>
+<section id="settings" class="panel"><div class="card"><h2>Live-data setup</h2><p>Keys stay on your server in <code>.env</code>; do not publish them in browser JavaScript.</p><p><b>Alpha Vantage</b> — FX prices and technical series.</p><p><b>Trading Economics</b> — economic calendar, actual/consensus/forecast and historical macro data.</p><p id="providerStatus"></p></div><div class="card"><h2>Method</h2><p>News release → wait for the market to digest it → compare actual/expected and policy implications → update currency score → compare currencies → detect divergence → wait for technical confirmation.</p></div></section>
+</main><script src="app.js"></script></body></html>
