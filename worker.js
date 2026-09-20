@@ -43,15 +43,87 @@ export default {
     }
 
     // ==========================================
+    // FUNDAMENTAL SCORING ENGINE
+    // ==========================================
+    if (url.pathname === "/api/fundamentals") {
+
+      const currencies = [
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY",
+        "CHF",
+        "CAD",
+        "AUD",
+        "NZD"
+      ];
+
+      const scores = {};
+
+      for (const currency of currencies) {
+
+        const interest =
+          Number(url.searchParams.get(`${currency}_interest`) || 0);
+
+        const inflation =
+          Number(url.searchParams.get(`${currency}_inflation`) || 0);
+
+        const growth =
+          Number(url.searchParams.get(`${currency}_growth`) || 0);
+
+        const employment =
+          Number(url.searchParams.get(`${currency}_employment`) || 0);
+
+        const centralBank =
+          Number(url.searchParams.get(`${currency}_centralbank`) || 0);
+
+        const total =
+          interest +
+          inflation +
+          growth +
+          employment +
+          centralBank;
+
+        scores[currency] = {
+          interest,
+          inflation,
+          growth,
+          employment,
+          centralBank,
+          total
+        };
+      }
+
+      return Response.json({
+        success: true,
+        scores,
+        methodology: {
+          interest: "Interest-rate direction",
+          inflation: "Inflation trend",
+          growth: "Economic growth",
+          employment: "Labour-market conditions",
+          centralBank: "Central-bank stance"
+        }
+      });
+    }
+
+    // ==========================================
     // MACRO ANALYSIS ENGINE
     // ==========================================
     if (url.pathname === "/api/analyse") {
+
       const pair = (
         url.searchParams.get("pair") || "EUR/USD"
       ).toUpperCase();
 
-      const base = Number(url.searchParams.get("base") || 0);
-      const quote = Number(url.searchParams.get("quote") || 0);
+      const base = Number(
+        url.searchParams.get("base") || 0
+      );
+
+      const quote = Number(
+        url.searchParams.get("quote") || 0
+      );
+
       const technical = Number(
         url.searchParams.get("technical") || 0
       );
@@ -62,6 +134,7 @@ export default {
       const differential = base - quote;
 
       let action = "PASS";
+
       let summary =
         "Fundamental differential is too weak for this framework.";
 
@@ -71,25 +144,37 @@ export default {
         technical >= 2
       ) {
         action = `BUY ${pair}`;
+
         summary =
           "Strong macro differential, price/fundamental divergence and technical confirmation.";
-      } else if (
+      }
+
+      else if (
         differential <= -6 &&
         divergence &&
         technical <= -2
       ) {
         action = `SELL ${pair}`;
+
         summary =
           "Strong negative macro differential, price/fundamental divergence and technical confirmation.";
-      } else if (
+      }
+
+      else if (
         Math.abs(differential) >= 6 &&
         divergence
       ) {
         action = "WAIT";
+
         summary =
           "Strong macro differential and divergence, but technical confirmation is incomplete.";
-      } else if (Math.abs(differential) >= 3) {
+      }
+
+      else if (
+        Math.abs(differential) >= 3
+      ) {
         action = "WATCH";
+
         summary =
           "Moderate fundamental differential; wait for stronger divergence and confirmation.";
       }
@@ -103,6 +188,7 @@ export default {
         technical,
         action,
         summary,
+
         framework: [
           "Fundamentals",
           "Fundamental differential",
