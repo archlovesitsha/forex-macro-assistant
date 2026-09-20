@@ -3,7 +3,7 @@ export default {
     const url = new URL(request.url);
 
     // ==========================================
-    // ALPHA VANTAGE - CURRENT FX RATE
+    // LIVE FX RATE — ALPHA VANTAGE
     // ==========================================
     if (url.pathname === "/api/fx/rate") {
       const from = (url.searchParams.get("from") || "EUR").toUpperCase();
@@ -43,51 +43,78 @@ export default {
     }
 
     // ==========================================
-    // FREE HISTORICAL FX DATA
+    // MACRO ANALYSIS ENGINE
     // ==========================================
-    if (url.pathname === "/api/fx/history") {
+    if (url.pathname === "/api/analyse") {
       const pair = (
         url.searchParams.get("pair") || "EUR/USD"
       ).toUpperCase();
 
-      const parts = pair.split("/");
+      const base = Number(url.searchParams.get("base") || 0);
+      const quote = Number(url.searchParams.get("quote") || 0);
+      const technical = Number(
+        url.searchParams.get("technical") || 0
+      );
 
-      if (parts.length !== 2) {
-        return Response.json({
-          configured: false,
-          message: "Pair must be in the format EUR/USD."
-        });
+      const divergence =
+        url.searchParams.get("divergence") === "true";
+
+      const differential = base - quote;
+
+      let action = "PASS";
+      let summary =
+        "Fundamental differential is too weak for this framework.";
+
+      if (
+        differential >= 6 &&
+        divergence &&
+        technical >= 2
+      ) {
+        action = `BUY ${pair}`;
+        summary =
+          "Strong macro differential, price/fundamental divergence and technical confirmation.";
+      } else if (
+        differential <= -6 &&
+        divergence &&
+        technical <= -2
+      ) {
+        action = `SELL ${pair}`;
+        summary =
+          "Strong negative macro differential, price/fundamental divergence and technical confirmation.";
+      } else if (
+        Math.abs(differential) >= 6 &&
+        divergence
+      ) {
+        action = "WAIT";
+        summary =
+          "Strong macro differential and divergence, but technical confirmation is incomplete.";
+      } else if (Math.abs(differential) >= 3) {
+        action = "WATCH";
+        summary =
+          "Moderate fundamental differential; wait for stronger divergence and confirmation.";
       }
 
-      const from = parts[0];
-      const to = parts[1];
-      const symbol = `${from}${to}=X`;
-
-      const apiUrl =
-        `https://query1.finance.yahoo.com/v8/finance/chart/` +
-        `${encodeURIComponent(symbol)}?range=3mo&interval=1d`;
-
-      try {
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-
-        return Response.json({
-          configured: true,
-          provider: "Yahoo Finance",
-          pair,
-          data
-        });
-      } catch (error) {
-        return Response.json({
-          configured: false,
-          provider: "Yahoo Finance",
-          error: error.message
-        });
-      }
+      return Response.json({
+        pair,
+        base_score: base,
+        quote_score: quote,
+        differential,
+        divergence,
+        technical,
+        action,
+        summary,
+        framework: [
+          "Fundamentals",
+          "Fundamental differential",
+          "Price divergence",
+          "Technical confirmation",
+          "Rule-based action"
+        ]
+      });
     }
 
     // ==========================================
-    // SERVE THE FOREX MACRO ASSISTANT APP
+    // SERVE THE APP
     // ==========================================
     return env.ASSETS.fetch(request);
   }
