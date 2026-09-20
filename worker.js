@@ -142,25 +142,15 @@ export default {
 
       function change(data) {
         if (!data || data.length < 2) return null;
-
         return data[0].value - data[1].value;
       }
 
       try {
-
-        // ==========================================
-        // GET RAW DATA
-        // ==========================================
-
         const raw = {};
 
         for (const [factor, series] of Object.entries(seriesMap)) {
           raw[factor] = await getFredSeries(series);
         }
-
-        // ==========================================
-        // CALCULATE CHANGES
-        // ==========================================
 
         const changes = {
           interest: change(raw.interest),
@@ -170,19 +160,11 @@ export default {
           liquidity: change(raw.liquidity)
         };
 
-        // ==========================================
-        // SCORING ENGINE
-        // ==========================================
-
         let interestScore = 0;
         let growthScore = 0;
         let employmentScore = 0;
         let inflationScore = 0;
         let liquidityScore = 0;
-
-        // ------------------------------------------
-        // INTEREST RATE SCORE
-        // ------------------------------------------
 
         if (changes.interest >= 0.25) {
           interestScore = 2;
@@ -194,10 +176,6 @@ export default {
           interestScore = -1;
         }
 
-        // ------------------------------------------
-        // GDP GROWTH SCORE
-        // ------------------------------------------
-
         if (changes.growth >= 100) {
           growthScore = 2;
         } else if (changes.growth > 0) {
@@ -207,11 +185,6 @@ export default {
         } else if (changes.growth < 0) {
           growthScore = -1;
         }
-
-        // ------------------------------------------
-        // EMPLOYMENT SCORE
-        // ------------------------------------------
-        // Falling unemployment = stronger labour market
 
         if (changes.employment <= -0.2) {
           employmentScore = 2;
@@ -223,50 +196,13 @@ export default {
           employmentScore = -1;
         }
 
-        // ------------------------------------------
-        // INFLATION SCORE
-        // ------------------------------------------
-        // CPI direction alone is not enough to
-        // determine whether USD should be bullish
-        // or bearish.
-        //
-        // Therefore we currently keep this neutral.
-        // Later we will compare inflation with:
-        // - central-bank policy
-        // - growth
-        // - labour conditions
-        // - inflation trend
-
-        if (changes.inflation > 0) {
-          inflationScore = 0;
-        } else if (changes.inflation < 0) {
-          inflationScore = 0;
-        } else {
-          inflationScore = 0;
-        }
-
-        // ------------------------------------------
-        // LIQUIDITY SCORE
-        // ------------------------------------------
-        // Falling Fed assets can indicate tighter
-        // liquidity conditions.
-        //
-        // Rising Fed assets can indicate easier
-        // liquidity conditions.
-        //
-        // This remains a secondary factor.
+        inflationScore = 0;
 
         if (changes.liquidity <= -10000) {
           liquidityScore = 1;
         } else if (changes.liquidity >= 10000) {
           liquidityScore = -1;
-        } else {
-          liquidityScore = 0;
         }
-
-        // ==========================================
-        // TOTAL USD MACRO SCORE
-        // ==========================================
 
         const totalScore =
           interestScore +
@@ -274,10 +210,6 @@ export default {
           employmentScore +
           inflationScore +
           liquidityScore;
-
-        // ==========================================
-        // MACRO REGIME
-        // ==========================================
 
         let regime = "NEUTRAL";
 
@@ -291,18 +223,10 @@ export default {
           regime = "NEGATIVE";
         }
 
-        // ==========================================
-        // RETURN RESULT
-        // ==========================================
-
         return Response.json({
-
           success: true,
-
           currency: "USD",
-
           provider: "FRED",
-
           series: seriesMap,
 
           latest: {
@@ -316,25 +240,17 @@ export default {
           changes,
 
           scores: {
-
             interest: interestScore,
-
             growth: growthScore,
-
             employment: employmentScore,
-
             inflation: inflationScore,
-
             liquidity: liquidityScore,
-
             total: totalScore
-
           },
 
           regime,
 
           methodology: {
-
             interest:
               "Higher effective federal funds rate changes are treated as tighter monetary policy.",
 
@@ -349,7 +265,178 @@ export default {
 
             liquidity:
               "Changes in Federal Reserve total assets are treated as a secondary liquidity input."
+          }
+        });
 
+      } catch (error) {
+        return Response.json({
+          success: false,
+          currency: "USD",
+          provider: "FRED",
+          error: error.message
+        });
+      }
+    }
+
+    // ==========================================
+    // EUR MACRO FUNDAMENTAL ENGINE
+    // ==========================================
+    if (url.pathname === "/api/eur-macro") {
+
+      if (!env.FRED_API_KEY) {
+        return Response.json({
+          success: false,
+          error: "FRED API key is not configured."
+        });
+      }
+
+      const seriesMap = {
+        interest: "ECBDFR",
+        inflation: "CP0000EZ19M086NEST",
+        growth: "CLVMNACSCAB1GQEA19"
+      };
+
+      async function getFredSeries(series) {
+        const apiUrl =
+          `https://api.stlouisfed.org/fred/series/observations` +
+          `?series_id=${series}` +
+          `&api_key=${encodeURIComponent(env.FRED_API_KEY)}` +
+          `&file_type=json` +
+          `&sort_order=desc` +
+          `&limit=5`;
+
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+
+        if (!data.observations) {
+          throw new Error(`No observations returned for ${series}`);
+        }
+
+        return data.observations
+          .filter(x => x.value !== ".")
+          .map(x => ({
+            date: x.date,
+            value: Number(x.value)
+          }));
+      }
+
+      function change(data) {
+        if (!data || data.length < 2) return null;
+        return data[0].value - data[1].value;
+      }
+
+      try {
+
+        const raw = {};
+
+        for (const [factor, series] of Object.entries(seriesMap)) {
+          raw[factor] = await getFredSeries(series);
+        }
+
+        const changes = {
+          interest: change(raw.interest),
+          inflation: change(raw.inflation),
+          growth: change(raw.growth)
+        };
+
+        // ==========================================
+        // EUR SCORING
+        // ==========================================
+
+        let interestScore = 0;
+        let inflationScore = 0;
+        let growthScore = 0;
+
+        // Interest rate
+        if (changes.interest >= 0.25) {
+          interestScore = 2;
+        } else if (changes.interest > 0) {
+          interestScore = 1;
+        } else if (changes.interest <= -0.25) {
+          interestScore = -2;
+        } else if (changes.interest < 0) {
+          interestScore = -1;
+        }
+
+        // Growth
+        if (changes.growth >= 10000) {
+          growthScore = 2;
+        } else if (changes.growth > 0) {
+          growthScore = 1;
+        } else if (changes.growth <= -10000) {
+          growthScore = -2;
+        } else if (changes.growth < 0) {
+          growthScore = -1;
+        }
+
+        // Inflation remains neutral until we compare
+        // inflation against ECB policy and growth.
+        inflationScore = 0;
+
+        const totalScore =
+          interestScore +
+          inflationScore +
+          growthScore;
+
+        let regime = "NEUTRAL";
+
+        if (totalScore >= 4) {
+          regime = "STRONG";
+        } else if (totalScore >= 2) {
+          regime = "POSITIVE";
+        } else if (totalScore <= -4) {
+          regime = "WEAK";
+        } else if (totalScore <= -2) {
+          regime = "NEGATIVE";
+        }
+
+        return Response.json({
+
+          success: true,
+
+          currency: "EUR",
+
+          provider: "FRED",
+
+          series: seriesMap,
+
+          latest: {
+            interest: raw.interest[0],
+            inflation: raw.inflation[0],
+            growth: raw.growth[0]
+          },
+
+          changes,
+
+          scores: {
+            interest: interestScore,
+            inflation: inflationScore,
+            growth: growthScore,
+            total: totalScore
+          },
+
+          regime,
+
+          limitations: {
+            employment:
+              "Current live Euro Area unemployment was not included because the readily available FRED unemployment series located during implementation are outdated OECD series.",
+
+            inflation:
+              "HICP direction alone is not used as a bullish or bearish EUR signal.",
+
+            growth:
+              "Real GDP is quarterly and should be interpreted as an economic-growth input rather than a short-term trading signal."
+          },
+
+          methodology: {
+            interest:
+              "ECB Deposit Facility Rate direction is used as a monetary-policy input.",
+
+            inflation:
+              "Euro Area HICP is monitored but currently receives a neutral score until policy context is incorporated.",
+
+            growth:
+              "Positive changes in real Euro Area GDP contribute positively."
           }
 
         });
@@ -360,7 +447,7 @@ export default {
 
           success: false,
 
-          currency: "USD",
+          currency: "EUR",
 
           provider: "FRED",
 
