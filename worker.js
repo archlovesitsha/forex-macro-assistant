@@ -339,15 +339,10 @@ export default {
           growth: change(raw.growth)
         };
 
-        // ==========================================
-        // EUR SCORING
-        // ==========================================
-
         let interestScore = 0;
         let inflationScore = 0;
         let growthScore = 0;
 
-        // Interest rate
         if (changes.interest >= 0.25) {
           interestScore = 2;
         } else if (changes.interest > 0) {
@@ -358,7 +353,6 @@ export default {
           interestScore = -1;
         }
 
-        // Growth
         if (changes.growth >= 10000) {
           growthScore = 2;
         } else if (changes.growth > 0) {
@@ -369,8 +363,6 @@ export default {
           growthScore = -1;
         }
 
-        // Inflation remains neutral until we compare
-        // inflation against ECB policy and growth.
         inflationScore = 0;
 
         const totalScore =
@@ -393,11 +385,8 @@ export default {
         return Response.json({
 
           success: true,
-
           currency: "EUR",
-
           provider: "FRED",
-
           series: seriesMap,
 
           latest: {
@@ -446,16 +435,116 @@ export default {
         return Response.json({
 
           success: false,
-
           currency: "EUR",
-
           provider: "FRED",
+          error: error.message
+
+        });
+
+      }
+    }
+
+    // ==========================================
+    // EUR/USD PAIR ANALYSIS ENGINE
+    // ==========================================
+    if (url.pathname === "/api/pair-analysis") {
+
+      try {
+
+        // Get EUR macro score
+        const eurUrl =
+          new URL("/api/eur-macro", request.url);
+
+        const eurResponse =
+          await fetch(eurUrl);
+
+        const eurData =
+          await eurResponse.json();
+
+
+        // Get USD macro score
+        const usdUrl =
+          new URL("/api/usd-macro", request.url);
+
+        const usdResponse =
+          await fetch(usdUrl);
+
+        const usdData =
+          await usdResponse.json();
+
+
+        // Check that both engines worked
+        if (!eurData.success || !usdData.success) {
+
+          return Response.json({
+            success: false,
+            error: "EUR or USD macro engine failed.",
+            eur: eurData,
+            usd: usdData
+          });
+
+        }
+
+
+        // Extract scores
+        const eurScore =
+          Number(eurData.scores.total || 0);
+
+        const usdScore =
+          Number(usdData.scores.total || 0);
+
+
+        // Calculate differential
+        const differential =
+          eurScore - usdScore;
+
+
+        // Determine basic macro bias
+        let bias = "NEUTRAL";
+
+        if (differential > 0) {
+          bias = "EUR/USD POSITIVE";
+        } else if (differential < 0) {
+          bias = "EUR/USD NEGATIVE";
+        }
+
+
+        return Response.json({
+
+          success: true,
+
+          pair: "EUR/USD",
+
+          eur_score: eurScore,
+
+          usd_score: usdScore,
+
+          differential,
+
+          bias,
+
+          explanation:
+            `EUR score (${eurScore}) - USD score (${usdScore}) = differential (${differential})`,
+
+          next_stage:
+            "Price divergence"
+
+        });
+
+      } catch (error) {
+
+        return Response.json({
+
+          success: false,
+
+          pair: "EUR/USD",
 
           error: error.message
 
         });
 
       }
+
     }
 
     // ==========================================
