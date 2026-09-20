@@ -43,10 +43,63 @@ export default {
     }
 
     // ==========================================
+    // FRED ECONOMIC DATA
+    // ==========================================
+    if (url.pathname === "/api/fred") {
+      const series = url.searchParams.get("series");
+
+      if (!series) {
+        return Response.json({
+          success: false,
+          provider: "FRED",
+          error: "Missing FRED series ID."
+        });
+      }
+
+      if (!env.FRED_API_KEY) {
+        return Response.json({
+          success: false,
+          provider: "FRED",
+          error: "FRED API key is not configured."
+        });
+      }
+
+      const limit = Number(
+        url.searchParams.get("limit") || 10
+      );
+
+      const apiUrl =
+        `https://api.stlouisfed.org/fred/series/observations` +
+        `?series_id=${encodeURIComponent(series)}` +
+        `&api_key=${encodeURIComponent(env.FRED_API_KEY)}` +
+        `&file_type=json` +
+        `&sort_order=desc` +
+        `&limit=${limit}`;
+
+      try {
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+
+        return Response.json({
+          success: true,
+          provider: "FRED",
+          series,
+          data
+        });
+      } catch (error) {
+        return Response.json({
+          success: false,
+          provider: "FRED",
+          series,
+          error: error.message
+        });
+      }
+    }
+
+    // ==========================================
     // FUNDAMENTAL SCORING ENGINE
     // ==========================================
     if (url.pathname === "/api/fundamentals") {
-
       const currencies = [
         "USD",
         "EUR",
@@ -61,7 +114,6 @@ export default {
       const scores = {};
 
       for (const currency of currencies) {
-
         const interest =
           Number(url.searchParams.get(`${currency}_interest`) || 0);
 
@@ -111,7 +163,6 @@ export default {
     // MACRO ANALYSIS ENGINE
     // ==========================================
     if (url.pathname === "/api/analyse") {
-
       const pair = (
         url.searchParams.get("pair") || "EUR/USD"
       ).toUpperCase();
@@ -188,7 +239,6 @@ export default {
         technical,
         action,
         summary,
-
         framework: [
           "Fundamentals",
           "Fundamental differential",
