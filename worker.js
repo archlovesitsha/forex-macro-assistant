@@ -25,6 +25,7 @@ export default {
       return Response.json({
         configured: true,
         provider: "Alpha Vantage",
+        pair: `${from}/${to}`,
         data
       });
     }
