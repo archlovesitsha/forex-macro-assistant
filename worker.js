@@ -1296,6 +1296,491 @@ export default {
     }
 
     // ==========================================
+    // H4 TECHNICAL ANALYSIS ENGINE
+    // ==========================================
+    if (url.pathname === "/api/technical-analysis") {
+
+      if (!env.TWELVE_DATA_API_KEY) {
+        return Response.json({
+          success: false,
+          provider: "Twelve Data",
+          error: "TWELVE_DATA_API_KEY is not configured."
+        });
+      }
+
+      const interval = "4h";
+      const outputsize = 100;
+
+      const apiUrl =
+        `https://api.twelvedata.com/time_series` +
+        `?symbol=EUR%2FUSD` +
+        `&interval=${interval}` +
+        `&outputsize=${outputsize}` +
+        `&timezone=UTC` +
+        `&apikey=${encodeURIComponent(env.TWELVE_DATA_API_KEY)}`;
+
+      try {
+
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+
+        if (!response.ok || data.status === "error") {
+          return Response.json({
+            success: false,
+            provider: "Twelve Data",
+            interval,
+            error:
+              data.message ||
+              `HTTP ${response.status}`
+          });
+        }
+
+        const candles = (data.values || [])
+          .map(c => ({
+            datetime: c.datetime,
+            open: Number(c.open),
+            high: Number(c.high),
+            low: Number(c.low),
+            close: Number(c.close)
+          }))
+          .filter(c =>
+            Number.isFinite(c.open) &&
+            Number.isFinite(c.high) &&
+            Number.isFinite(c.low) &&
+            Number.isFinite(c.close)
+          )
+          .reverse();
+
+        if (candles.length < 20) {
+          return Response.json({
+            success: false,
+            provider: "Twelve Data",
+            error:
+              "Not enough H4 candles for technical analysis.",
+            candle_count: candles.length
+          });
+        }
+
+        // ------------------------------------------
+        // 1. SWING HIGH / SWING LOW DETECTION
+        // ------------------------------------------
+
+        const swingHighs = [];
+        const swingLows = [];
+
+        for (let i = 2; i < candles.length - 2; i++) {
+
+          const current = candles[i];
+
+          const isSwingHigh =
+            current.high > candles[i - 1].high &&
+            current.high > candles[i - 2].high &&
+            current.high > candles[i + 1].high &&
+            current.high > candles[i + 2].high;
+
+          const isSwingLow =
+            current.low < candles[i - 1].low &&
+            current.low < candles[i - 2].low &&
+            current.low < candles[i + 1].low &&
+            current.low < candles[i + 2].low;
+
+          if (isSwingHigh) {
+            swingHighs.push({
+              index: i,
+              datetime: current.datetime,
+              price: current.high
+            });
+          }
+
+          if (isSwingLow) {
+            swingLows.push({
+              index: i,
+              datetime: current.datetime,
+              price: current.low
+            });
+          }
+        }
+
+        // ------------------------------------------
+        // 2. CLASSIFY SWING STRUCTURE
+        // ------------------------------------------
+
+        const classifiedHighs = [];
+
+        for (let i = 1; i < swingHighs.length; i++) {
+
+          const current = swingHighs[i];
+          const previous = swingHighs[i - 1];
+
+          let type = "EH";
+
+          if (current.price > previous.price) {
+            type = "HH";
+          } else if (current.price < previous.price) {
+            type = "LH";
+          }
+
+          classifiedHighs.push({
+            ...current,
+            type
+          });
+        }
+
+        const classifiedLows = [];
+
+        for (let i = 1; i < swingLows.length; i++) {
+
+          const current = swingLows[i];
+          const previous = swingLows[i - 1];
+
+          let type = "EL";
+
+          if (current.price > previous.price) {
+            type = "HL";
+          } else if (current.price < previous.price) {
+            type = "LL";
+          }
+
+          classifiedLows.push({
+            ...current,
+            type
+          });
+        }
+
+        // ------------------------------------------
+        // 3. CURRENT MARKET STRUCTURE
+        // ------------------------------------------
+
+        const recentHighs =
+          classifiedHighs.slice(-4);
+
+        const recentLows =
+          classifiedLows.slice(-4);
+
+        let bullishStructure = false;
+        let bearishStructure = false;
+
+        if (
+          recentHighs.length >= 2 &&
+          recentLows.length >= 2
+        ) {
+
+          const highTypes =
+            recentHighs.map(x => x.type);
+
+          const lowTypes =
+            recentLows.map(x => x.type);
+
+          bullishStructure =
+            highTypes.includes("HH") &&
+            lowTypes.includes("HL");
+
+          bearishStructure =
+            highTypes.includes("LH") &&
+            lowTypes.includes("LL");
+        }
+
+        let structure = "NEUTRAL";
+
+        if (bullishStructure && !bearishStructure) {
+          structure = "BULLISH";
+        } else if (bearishStructure && !bullishStructure) {
+          structure = "BEARISH";
+        }
+
+        // ------------------------------------------
+        // 4. BREAK OF STRUCTURE
+        // ------------------------------------------
+
+        const latestCandle =
+          candles[candles.length - 1];
+
+        const previousSwingHigh =
+          swingHighs.length > 0
+            ? swingHighs[swingHighs.length - 1]
+            : null;
+
+        const previousSwingLow =
+          swingLows.length > 0
+            ? swingLows[swingLows.length - 1]
+            : null;
+
+        let bullishBOS = false;
+        let bearishBOS = false;
+
+        let bosLevel = null;
+
+        if (
+          previousSwingHigh &&
+          latestCandle.close > previousSwingHigh.price
+        ) {
+          bullishBOS = true;
+          bosLevel = previousSwingHigh.price;
+        }
+
+        if (
+          previousSwingLow &&
+          latestCandle.close < previousSwingLow.price
+        ) {
+          bearishBOS = true;
+          bosLevel = previousSwingLow.price;
+        }
+
+        let bos = "NONE";
+
+        if (bullishBOS && !bearishBOS) {
+          bos = "BULLISH";
+        } else if (bearishBOS && !bullishBOS) {
+          bos = "BEARISH";
+        }
+
+        // ------------------------------------------
+        // 5. RECENT AVERAGE RANGE
+        // ------------------------------------------
+
+        const rangeLookback =
+          Math.min(20, candles.length);
+
+        const recentCandles =
+          candles.slice(-rangeLookback);
+
+        const averageRange =
+          recentCandles.reduce(
+            (sum, candle) =>
+              sum + (candle.high - candle.low),
+            0
+          ) / recentCandles.length;
+
+        // ------------------------------------------
+        // 6. DEMAND ZONE CANDIDATES
+        // ------------------------------------------
+
+        const demandZones = [];
+
+        for (let i = 4; i < candles.length - 1; i++) {
+
+          const baseStart = i - 2;
+
+          const baseCandles = candles.slice(
+            baseStart,
+            i + 1
+          );
+
+          const baseHigh =
+            Math.max(
+              ...baseCandles.map(c => c.high)
+            );
+
+          const baseLow =
+            Math.min(
+              ...baseCandles.map(c => c.low)
+            );
+
+          const baseRange =
+            baseHigh - baseLow;
+
+          const departure =
+            candles[i + 1].close - baseHigh;
+
+          if (
+            baseRange > 0 &&
+            departure >= averageRange * 1.5
+          ) {
+
+            demandZones.push({
+              type: "DEMAND",
+              from: baseLow,
+              to: baseHigh,
+              createdAt: candles[i].datetime,
+              departure: Number(
+                departure.toFixed(5)
+              ),
+              strength: "CANDIDATE"
+            });
+          }
+        }
+
+        // ------------------------------------------
+        // 7. SUPPLY ZONE CANDIDATES
+        // ------------------------------------------
+
+        const supplyZones = [];
+
+        for (let i = 4; i < candles.length - 1; i++) {
+
+          const baseStart = i - 2;
+
+          const baseCandles = candles.slice(
+            baseStart,
+            i + 1
+          );
+
+          const baseHigh =
+            Math.max(
+              ...baseCandles.map(c => c.high)
+            );
+
+          const baseLow =
+            Math.min(
+              ...baseCandles.map(c => c.low)
+            );
+
+          const baseRange =
+            baseHigh - baseLow;
+
+          const departure =
+            baseLow - candles[i + 1].close;
+
+          if (
+            baseRange > 0 &&
+            departure >= averageRange * 1.5
+          ) {
+
+            supplyZones.push({
+              type: "SUPPLY",
+              from: baseLow,
+              to: baseHigh,
+              createdAt: candles[i].datetime,
+              departure: Number(
+                departure.toFixed(5)
+              ),
+              strength: "CANDIDATE"
+            });
+          }
+        }
+
+        // ------------------------------------------
+        // 8. SUPPORT / RESISTANCE
+        // ------------------------------------------
+
+        const supportLevels =
+          swingLows
+            .slice(-5)
+            .map(x => ({
+              price: x.price,
+              datetime: x.datetime,
+              timeframe: "H4"
+            }));
+
+        const resistanceLevels =
+          swingHighs
+            .slice(-5)
+            .map(x => ({
+              price: x.price,
+              datetime: x.datetime,
+              timeframe: "H4"
+            }));
+
+        // ------------------------------------------
+        // 9. TECHNICAL STATUS
+        // ------------------------------------------
+
+        let technicalStatus = "NOT_CONFIRMED";
+
+        if (
+          bos === "BULLISH" &&
+          structure === "BULLISH"
+        ) {
+          technicalStatus = "BULLISH_STRUCTURE";
+        }
+
+        if (
+          bos === "BEARISH" &&
+          structure === "BEARISH"
+        ) {
+          technicalStatus = "BEARISH_STRUCTURE";
+        }
+
+        // ------------------------------------------
+        // RETURN ANALYSIS
+        // ------------------------------------------
+
+        return Response.json({
+
+          success: true,
+
+          provider: "Twelve Data",
+
+          pair: "EUR/USD",
+
+          timeframe: "H4",
+
+          candle_count: candles.length,
+
+          latest: latestCandle,
+
+          market_structure: {
+            direction: structure,
+            bullish: bullishStructure,
+            bearish: bearishStructure
+          },
+
+          swing_points: {
+            highs: classifiedHighs.slice(-10),
+            lows: classifiedLows.slice(-10)
+          },
+
+          break_of_structure: {
+            direction: bos,
+            level: bosLevel
+          },
+
+          zones: {
+            demand: demandZones.slice(-5),
+            supply: supplyZones.slice(-5)
+          },
+
+          support: supportLevels,
+
+          resistance: resistanceLevels,
+
+          volatility: {
+            averageRange: Number(
+              averageRange.toFixed(5)
+            )
+          },
+
+          technical_status: technicalStatus,
+
+          methodology: {
+            swing:
+              "Swing high/low requires two candles on the left and two on the right.",
+
+            bos:
+              "Break of structure requires a candle close beyond the relevant swing level.",
+
+            demand:
+              "Demand candidates use a compact three-candle base followed by a bullish departure of at least 1.5 times recent average H4 range.",
+
+            supply:
+              "Supply candidates use a compact three-candle base followed by a bearish departure of at least 1.5 times recent average H4 range.",
+
+            confirmation:
+              "H4 technical analysis is descriptive at this stage. It does not create a BUY or SELL signal."
+          }
+
+        });
+
+      } catch (error) {
+
+        return Response.json({
+
+          success: false,
+
+          provider: "Twelve Data",
+
+          pair: "EUR/USD",
+
+          interval: "4h",
+
+          error: error.message
+
+        });
+
+      }
+    }
+
+    // ==========================================
     // TWELVE DATA — TECHNICAL DATA TEST
     // ==========================================
     if (url.pathname === "/api/technical-data-test") {
@@ -1319,9 +1804,6 @@ export default {
         });
       }
 
-      // ------------------------------------------
-      // REQUEST 100 CANDLES FOR TECHNICAL ANALYSIS
-      // ------------------------------------------
       const outputsize = 100;
 
       const apiUrl =
