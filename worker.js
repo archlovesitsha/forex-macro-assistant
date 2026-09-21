@@ -504,36 +504,24 @@ export default {
 
       try {
 
-        // ------------------------------------------
-        // GET EUR DATA DIRECTLY FROM FRED
-        // ------------------------------------------
         const eurRaw = {};
 
         for (const [factor, series] of Object.entries(eurSeries)) {
           eurRaw[factor] = await getPairFredSeries(series);
         }
 
-        // ------------------------------------------
-        // GET USD DATA DIRECTLY FROM FRED
-        // ------------------------------------------
         const usdRaw = {};
 
         for (const [factor, series] of Object.entries(usdSeries)) {
           usdRaw[factor] = await getPairFredSeries(series);
         }
 
-        // ------------------------------------------
-        // EUR CHANGES
-        // ------------------------------------------
         const eurChanges = {
           interest: change(eurRaw.interest),
           inflation: change(eurRaw.inflation),
           growth: change(eurRaw.growth)
         };
 
-        // ------------------------------------------
-        // USD CHANGES
-        // ------------------------------------------
         const usdChanges = {
           interest: change(usdRaw.interest),
           inflation: change(usdRaw.inflation),
@@ -542,9 +530,6 @@ export default {
           liquidity: change(usdRaw.liquidity)
         };
 
-        // ------------------------------------------
-        // EUR SCORING
-        // ------------------------------------------
         let eurInterestScore = 0;
         let eurInflationScore = 0;
         let eurGrowthScore = 0;
@@ -576,9 +561,6 @@ export default {
           eurInflationScore +
           eurGrowthScore;
 
-        // ------------------------------------------
-        // USD SCORING
-        // ------------------------------------------
         let usdInterestScore = 0;
         let usdGrowthScore = 0;
         let usdEmploymentScore = 0;
@@ -630,15 +612,8 @@ export default {
           usdInflationScore +
           usdLiquidityScore;
 
-        // ------------------------------------------
-        // DIFFERENTIAL
-        // ------------------------------------------
-        const differential =
-          eurScore - usdScore;
+        const differential = eurScore - usdScore;
 
-        // ------------------------------------------
-        // MACRO RELATIONSHIP
-        // ------------------------------------------
         let bias = "NEUTRAL";
 
         if (differential > 0) {
@@ -647,9 +622,6 @@ export default {
           bias = "EUR/USD NEGATIVE";
         }
 
-        // ------------------------------------------
-        // REGIMES
-        // ------------------------------------------
         let eurRegime = "NEUTRAL";
 
         if (eurScore >= 4) {
@@ -736,6 +708,411 @@ export default {
           pair: "EUR/USD",
 
           provider: "FRED",
+
+          error: error.message
+
+        });
+
+      }
+    }
+
+    // ==========================================
+    // PRICE DIVERGENCE ENGINE
+    // ==========================================
+    if (url.pathname === "/api/price-divergence") {
+
+      const pair = (
+        url.searchParams.get("pair") || "EUR/USD"
+      ).toUpperCase();
+
+      const fromDate =
+        url.searchParams.get("from") || "2026-09-01";
+
+      const toDate =
+        url.searchParams.get("to") || "2026-09-18";
+
+      if (pair !== "EUR/USD") {
+        return Response.json({
+          success: false,
+          pair,
+          provider: "Frankfurter",
+          error:
+            "Price divergence currently supports EUR/USD only."
+        });
+      }
+
+      try {
+
+        // ------------------------------------------
+        // GET HISTORICAL EUR/USD PRICE DATA
+        // ------------------------------------------
+        const priceUrl =
+          `https://api.frankfurter.dev/v2/rates` +
+          `?from=${encodeURIComponent(fromDate)}` +
+          `&to=${encodeURIComponent(toDate)}` +
+          `&base=EUR` +
+          `&quotes=USD`;
+
+        const response = await fetch(priceUrl);
+
+        if (!response.ok) {
+          throw new Error(
+            `Frankfurter request failed: HTTP ${response.status}`
+          );
+        }
+
+        const prices = await response.json();
+
+        if (!Array.isArray(prices) || prices.length < 2) {
+          throw new Error(
+            "Not enough historical EUR/USD price data returned."
+          );
+        }
+
+        // ------------------------------------------
+        // SORT CHRONOLOGICALLY
+        // ------------------------------------------
+        prices.sort(
+          (a, b) =>
+            new Date(a.date) - new Date(b.date)
+        );
+
+        const first = prices[0];
+        const latest = prices[prices.length - 1];
+
+        const firstPrice = Number(first.rate);
+        const latestPrice = Number(latest.rate);
+
+        if (
+          !Number.isFinite(firstPrice) ||
+          !Number.isFinite(latestPrice) ||
+          firstPrice <= 0
+        ) {
+          throw new Error(
+            "Invalid EUR/USD price data returned."
+          );
+        }
+
+        // ------------------------------------------
+        // PRICE CHANGE
+        // ------------------------------------------
+        const priceChange =
+          latestPrice - firstPrice;
+
+        const priceChangePercent =
+          (priceChange / firstPrice) * 100;
+
+        let priceDirection = "FLAT";
+
+        if (priceChangePercent > 0.05) {
+          priceDirection = "UP";
+        } else if (priceChangePercent < -0.05) {
+          priceDirection = "DOWN";
+        }
+
+        // ------------------------------------------
+        // GET CURRENT FUNDAMENTAL DIFFERENTIAL
+        // ------------------------------------------
+        if (!env.FRED_API_KEY) {
+          return Response.json({
+            success: false,
+            pair,
+            provider: "Frankfurter + FRED",
+            error:
+              "FRED API key is not configured."
+          });
+        }
+
+        const eurSeries = {
+          interest: "ECBDFR",
+          inflation: "CP0000EZ19M086NEST",
+          growth: "CLVMNACSCAB1GQEA19"
+        };
+
+        const usdSeries = {
+          interest: "DFF",
+          inflation: "CPIAUCSL",
+          growth: "GDPC1",
+          employment: "UNRATE",
+          liquidity: "WALCL"
+        };
+
+        async function getFredSeries(series) {
+
+          const apiUrl =
+            `https://api.stlouisfed.org/fred/series/observations` +
+            `?series_id=${series}` +
+            `&api_key=${encodeURIComponent(env.FRED_API_KEY)}` +
+            `&file_type=json` +
+            `&sort_order=desc` +
+            `&limit=5`;
+
+          const fredResponse =
+            await fetch(apiUrl);
+
+          if (!fredResponse.ok) {
+            throw new Error(
+              `FRED request failed for ${series}: HTTP ${fredResponse.status}`
+            );
+          }
+
+          const data =
+            await fredResponse.json();
+
+          if (!data.observations) {
+            throw new Error(
+              `No observations returned for ${series}`
+            );
+          }
+
+          return data.observations
+            .filter(x => x.value !== ".")
+            .map(x => ({
+              date: x.date,
+              value: Number(x.value)
+            }));
+        }
+
+        function change(data) {
+          if (!data || data.length < 2) return null;
+          return data[0].value - data[1].value;
+        }
+
+        const eurRaw = {};
+        const usdRaw = {};
+
+        for (
+          const [factor, series]
+          of Object.entries(eurSeries)
+        ) {
+          eurRaw[factor] =
+            await getFredSeries(series);
+        }
+
+        for (
+          const [factor, series]
+          of Object.entries(usdSeries)
+        ) {
+          usdRaw[factor] =
+            await getFredSeries(series);
+        }
+
+        const eurChanges = {
+          interest: change(eurRaw.interest),
+          inflation: change(eurRaw.inflation),
+          growth: change(eurRaw.growth)
+        };
+
+        const usdChanges = {
+          interest: change(usdRaw.interest),
+          inflation: change(usdRaw.inflation),
+          growth: change(usdRaw.growth),
+          employment: change(usdRaw.employment),
+          liquidity: change(usdRaw.liquidity)
+        };
+
+        // ------------------------------------------
+        // EUR SCORE
+        // ------------------------------------------
+        let eurInterestScore = 0;
+        let eurGrowthScore = 0;
+
+        if (eurChanges.interest >= 0.25) {
+          eurInterestScore = 2;
+        } else if (eurChanges.interest > 0) {
+          eurInterestScore = 1;
+        } else if (eurChanges.interest <= -0.25) {
+          eurInterestScore = -2;
+        } else if (eurChanges.interest < 0) {
+          eurInterestScore = -1;
+        }
+
+        if (eurChanges.growth >= 10000) {
+          eurGrowthScore = 2;
+        } else if (eurChanges.growth > 0) {
+          eurGrowthScore = 1;
+        } else if (eurChanges.growth <= -10000) {
+          eurGrowthScore = -2;
+        } else if (eurChanges.growth < 0) {
+          eurGrowthScore = -1;
+        }
+
+        const eurScore =
+          eurInterestScore +
+          eurGrowthScore;
+
+        // ------------------------------------------
+        // USD SCORE
+        // ------------------------------------------
+        let usdInterestScore = 0;
+        let usdGrowthScore = 0;
+        let usdEmploymentScore = 0;
+        let usdLiquidityScore = 0;
+
+        if (usdChanges.interest >= 0.25) {
+          usdInterestScore = 2;
+        } else if (usdChanges.interest > 0) {
+          usdInterestScore = 1;
+        } else if (usdChanges.interest <= -0.25) {
+          usdInterestScore = -2;
+        } else if (usdChanges.interest < 0) {
+          usdInterestScore = -1;
+        }
+
+        if (usdChanges.growth >= 100) {
+          usdGrowthScore = 2;
+        } else if (usdChanges.growth > 0) {
+          usdGrowthScore = 1;
+        } else if (usdChanges.growth <= -100) {
+          usdGrowthScore = -2;
+        } else if (usdChanges.growth < 0) {
+          usdGrowthScore = -1;
+        }
+
+        if (usdChanges.employment <= -0.2) {
+          usdEmploymentScore = 2;
+        } else if (usdChanges.employment < 0) {
+          usdEmploymentScore = 1;
+        } else if (usdChanges.employment >= 0.2) {
+          usdEmploymentScore = -2;
+        } else if (usdChanges.employment > 0) {
+          usdEmploymentScore = -1;
+        }
+
+        if (usdChanges.liquidity <= -10000) {
+          usdLiquidityScore = 1;
+        } else if (usdChanges.liquidity >= 10000) {
+          usdLiquidityScore = -1;
+        }
+
+        const usdScore =
+          usdInterestScore +
+          usdGrowthScore +
+          usdEmploymentScore +
+          usdLiquidityScore;
+
+        // ------------------------------------------
+        // FUNDAMENTAL DIFFERENTIAL
+        // ------------------------------------------
+        const differential =
+          eurScore - usdScore;
+
+        let fundamentalDirection = "FLAT";
+
+        if (differential > 0) {
+          fundamentalDirection = "UP";
+        } else if (differential < 0) {
+          fundamentalDirection = "DOWN";
+        }
+
+        // ------------------------------------------
+        // DIVERGENCE LOGIC
+        // ------------------------------------------
+        let divergence = false;
+
+        if (
+          fundamentalDirection === "UP" &&
+          priceDirection === "DOWN"
+        ) {
+          divergence = true;
+        }
+
+        if (
+          fundamentalDirection === "DOWN" &&
+          priceDirection === "UP"
+        ) {
+          divergence = true;
+        }
+
+        let relationship = "ALIGNED";
+
+        if (divergence) {
+          relationship = "DIVERGENCE";
+        }
+
+        if (
+          fundamentalDirection === "FLAT" ||
+          priceDirection === "FLAT"
+        ) {
+          relationship = "INCONCLUSIVE";
+        }
+
+        return Response.json({
+
+          success: true,
+
+          pair,
+
+          provider: "Frankfurter + FRED",
+
+          period: {
+            from: first.date,
+            to: latest.date,
+            observations: prices.length
+          },
+
+          price: {
+            first: {
+              date: first.date,
+              value: firstPrice
+            },
+
+            latest: {
+              date: latest.date,
+              value: latestPrice
+            },
+
+            change: priceChange,
+
+            changePercent:
+              Number(priceChangePercent.toFixed(4)),
+
+            direction: priceDirection
+          },
+
+          fundamentals: {
+            eurScore,
+            usdScore,
+            differential,
+            direction: fundamentalDirection
+          },
+
+          divergence,
+
+          relationship,
+
+          explanation:
+            `Fundamental direction ${fundamentalDirection}; ` +
+            `price direction ${priceDirection}; ` +
+            `relationship ${relationship}.`,
+
+          nextStage:
+            divergence
+              ? "Technical confirmation"
+              : "Continue monitoring",
+
+          framework: [
+            "Macro fundamentals",
+            "Currency scores",
+            "Fundamental differential",
+            "Price divergence",
+            "Technical confirmation",
+            "Rule-based action"
+          ],
+
+          historicalPrices: prices
+
+        });
+
+      } catch (error) {
+
+        return Response.json({
+
+          success: false,
+
+          pair,
+
+          provider: "Frankfurter + FRED",
 
           error: error.message
 
