@@ -743,9 +743,6 @@ export default {
 
       try {
 
-        // ------------------------------------------
-        // GET HISTORICAL EUR/USD PRICE DATA
-        // ------------------------------------------
         const priceUrl =
           `https://api.frankfurter.dev/v2/rates` +
           `?from=${encodeURIComponent(fromDate)}` +
@@ -769,9 +766,6 @@ export default {
           );
         }
 
-        // ------------------------------------------
-        // SORT CHRONOLOGICALLY
-        // ------------------------------------------
         prices.sort(
           (a, b) =>
             new Date(a.date) - new Date(b.date)
@@ -793,9 +787,6 @@ export default {
           );
         }
 
-        // ------------------------------------------
-        // PRICE CHANGE
-        // ------------------------------------------
         const priceChange =
           latestPrice - firstPrice;
 
@@ -810,9 +801,6 @@ export default {
           priceDirection = "DOWN";
         }
 
-        // ------------------------------------------
-        // GET CURRENT FUNDAMENTAL DIFFERENTIAL
-        // ------------------------------------------
         if (!env.FRED_API_KEY) {
           return Response.json({
             success: false,
@@ -911,9 +899,6 @@ export default {
           liquidity: change(usdRaw.liquidity)
         };
 
-        // ------------------------------------------
-        // EUR SCORE
-        // ------------------------------------------
         let eurInterestScore = 0;
         let eurGrowthScore = 0;
 
@@ -941,9 +926,6 @@ export default {
           eurInterestScore +
           eurGrowthScore;
 
-        // ------------------------------------------
-        // USD SCORE
-        // ------------------------------------------
         let usdInterestScore = 0;
         let usdGrowthScore = 0;
         let usdEmploymentScore = 0;
@@ -991,9 +973,6 @@ export default {
           usdEmploymentScore +
           usdLiquidityScore;
 
-        // ------------------------------------------
-        // FUNDAMENTAL DIFFERENTIAL
-        // ------------------------------------------
         const differential =
           eurScore - usdScore;
 
@@ -1005,9 +984,6 @@ export default {
           fundamentalDirection = "DOWN";
         }
 
-        // ------------------------------------------
-        // DIVERGENCE LOGIC
-        // ------------------------------------------
         let divergence = false;
 
         if (
@@ -1343,11 +1319,16 @@ export default {
         });
       }
 
+      // ------------------------------------------
+      // REQUEST 100 CANDLES FOR TECHNICAL ANALYSIS
+      // ------------------------------------------
+      const outputsize = 100;
+
       const apiUrl =
         `https://api.twelvedata.com/time_series` +
         `?symbol=EUR%2FUSD` +
         `&interval=${encodeURIComponent(interval)}` +
-        `&outputsize=10` +
+        `&outputsize=${outputsize}` +
         `&timezone=UTC` +
         `&apikey=${encodeURIComponent(env.TWELVE_DATA_API_KEY)}`;
 
@@ -1382,6 +1363,7 @@ export default {
           pair: "EUR/USD",
           interval,
           candles: data.values || [],
+          candle_count: (data.values || []).length,
           meta: data.meta || null
         });
 
