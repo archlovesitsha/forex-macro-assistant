@@ -326,7 +326,6 @@ export default {
       }
 
       try {
-
         const raw = {};
 
         for (const [factor, series] of Object.entries(seriesMap)) {
@@ -383,7 +382,6 @@ export default {
         }
 
         return Response.json({
-
           success: true,
           currency: "EUR",
           provider: "FRED",
@@ -427,20 +425,15 @@ export default {
             growth:
               "Positive changes in real Euro Area GDP contribute positively."
           }
-
         });
 
       } catch (error) {
-
         return Response.json({
-
           success: false,
           currency: "EUR",
           provider: "FRED",
           error: error.message
-
         });
-
       }
     }
 
@@ -449,57 +442,203 @@ export default {
     // ==========================================
     if (url.pathname === "/api/pair-analysis") {
 
-      try {
+      if (!env.FRED_API_KEY) {
+        return Response.json({
+          success: false,
+          pair: "EUR/USD",
+          error: "FRED API key is not configured."
+        });
+      }
 
-        // Get EUR macro score
-        const eurUrl =
-          new URL("/api/eur-macro", request.url);
+      const eurSeries = {
+        interest: "ECBDFR",
+        inflation: "CP0000EZ19M086NEST",
+        growth: "CLVMNACSCAB1GQEA19"
+      };
 
-        const eurResponse =
-          await fetch(eurUrl);
+      const usdSeries = {
+        interest: "DFF",
+        inflation: "CPIAUCSL",
+        growth: "GDPC1",
+        employment: "UNRATE",
+        liquidity: "WALCL"
+      };
 
-        const eurData =
-          await eurResponse.json();
+      async function getPairFredSeries(series) {
+        const apiUrl =
+          `https://api.stlouisfed.org/fred/series/observations` +
+          `?series_id=${series}` +
+          `&api_key=${encodeURIComponent(env.FRED_API_KEY)}` +
+          `&file_type=json` +
+          `&sort_order=desc` +
+          `&limit=5`;
 
+        const response = await fetch(apiUrl);
 
-        // Get USD macro score
-        const usdUrl =
-          new URL("/api/usd-macro", request.url);
-
-        const usdResponse =
-          await fetch(usdUrl);
-
-        const usdData =
-          await usdResponse.json();
-
-
-        // Check that both engines worked
-        if (!eurData.success || !usdData.success) {
-
-          return Response.json({
-            success: false,
-            error: "EUR or USD macro engine failed.",
-            eur: eurData,
-            usd: usdData
-          });
-
+        if (!response.ok) {
+          throw new Error(
+            `FRED request failed for ${series}: HTTP ${response.status}`
+          );
         }
 
+        const data = await response.json();
 
-        // Extract scores
+        if (!data.observations) {
+          throw new Error(
+            `No observations returned for ${series}`
+          );
+        }
+
+        return data.observations
+          .filter(x => x.value !== ".")
+          .map(x => ({
+            date: x.date,
+            value: Number(x.value)
+          }));
+      }
+
+      function change(data) {
+        if (!data || data.length < 2) return null;
+        return data[0].value - data[1].value;
+      }
+
+      try {
+
+        // ------------------------------------------
+        // GET EUR DATA DIRECTLY FROM FRED
+        // ------------------------------------------
+        const eurRaw = {};
+
+        for (const [factor, series] of Object.entries(eurSeries)) {
+          eurRaw[factor] = await getPairFredSeries(series);
+        }
+
+        // ------------------------------------------
+        // GET USD DATA DIRECTLY FROM FRED
+        // ------------------------------------------
+        const usdRaw = {};
+
+        for (const [factor, series] of Object.entries(usdSeries)) {
+          usdRaw[factor] = await getPairFredSeries(series);
+        }
+
+        // ------------------------------------------
+        // EUR CHANGES
+        // ------------------------------------------
+        const eurChanges = {
+          interest: change(eurRaw.interest),
+          inflation: change(eurRaw.inflation),
+          growth: change(eurRaw.growth)
+        };
+
+        // ------------------------------------------
+        // USD CHANGES
+        // ------------------------------------------
+        const usdChanges = {
+          interest: change(usdRaw.interest),
+          inflation: change(usdRaw.inflation),
+          growth: change(usdRaw.growth),
+          employment: change(usdRaw.employment),
+          liquidity: change(usdRaw.liquidity)
+        };
+
+        // ------------------------------------------
+        // EUR SCORING
+        // ------------------------------------------
+        let eurInterestScore = 0;
+        let eurInflationScore = 0;
+        let eurGrowthScore = 0;
+
+        if (eurChanges.interest >= 0.25) {
+          eurInterestScore = 2;
+        } else if (eurChanges.interest > 0) {
+          eurInterestScore = 1;
+        } else if (eurChanges.interest <= -0.25) {
+          eurInterestScore = -2;
+        } else if (eurChanges.interest < 0) {
+          eurInterestScore = -1;
+        }
+
+        if (eurChanges.growth >= 10000) {
+          eurGrowthScore = 2;
+        } else if (eurChanges.growth > 0) {
+          eurGrowthScore = 1;
+        } else if (eurChanges.growth <= -10000) {
+          eurGrowthScore = -2;
+        } else if (eurChanges.growth < 0) {
+          eurGrowthScore = -1;
+        }
+
+        eurInflationScore = 0;
+
         const eurScore =
-          Number(eurData.scores.total || 0);
+          eurInterestScore +
+          eurInflationScore +
+          eurGrowthScore;
+
+        // ------------------------------------------
+        // USD SCORING
+        // ------------------------------------------
+        let usdInterestScore = 0;
+        let usdGrowthScore = 0;
+        let usdEmploymentScore = 0;
+        let usdInflationScore = 0;
+        let usdLiquidityScore = 0;
+
+        if (usdChanges.interest >= 0.25) {
+          usdInterestScore = 2;
+        } else if (usdChanges.interest > 0) {
+          usdInterestScore = 1;
+        } else if (usdChanges.interest <= -0.25) {
+          usdInterestScore = -2;
+        } else if (usdChanges.interest < 0) {
+          usdInterestScore = -1;
+        }
+
+        if (usdChanges.growth >= 100) {
+          usdGrowthScore = 2;
+        } else if (usdChanges.growth > 0) {
+          usdGrowthScore = 1;
+        } else if (usdChanges.growth <= -100) {
+          usdGrowthScore = -2;
+        } else if (usdChanges.growth < 0) {
+          usdGrowthScore = -1;
+        }
+
+        if (usdChanges.employment <= -0.2) {
+          usdEmploymentScore = 2;
+        } else if (usdChanges.employment < 0) {
+          usdEmploymentScore = 1;
+        } else if (usdChanges.employment >= 0.2) {
+          usdEmploymentScore = -2;
+        } else if (usdChanges.employment > 0) {
+          usdEmploymentScore = -1;
+        }
+
+        usdInflationScore = 0;
+
+        if (usdChanges.liquidity <= -10000) {
+          usdLiquidityScore = 1;
+        } else if (usdChanges.liquidity >= 10000) {
+          usdLiquidityScore = -1;
+        }
 
         const usdScore =
-          Number(usdData.scores.total || 0);
+          usdInterestScore +
+          usdGrowthScore +
+          usdEmploymentScore +
+          usdInflationScore +
+          usdLiquidityScore;
 
-
-        // Calculate differential
+        // ------------------------------------------
+        // DIFFERENTIAL
+        // ------------------------------------------
         const differential =
           eurScore - usdScore;
 
-
-        // Determine basic macro bias
+        // ------------------------------------------
+        // MACRO RELATIONSHIP
+        // ------------------------------------------
         let bias = "NEUTRAL";
 
         if (differential > 0) {
@@ -508,6 +647,32 @@ export default {
           bias = "EUR/USD NEGATIVE";
         }
 
+        // ------------------------------------------
+        // REGIMES
+        // ------------------------------------------
+        let eurRegime = "NEUTRAL";
+
+        if (eurScore >= 4) {
+          eurRegime = "STRONG";
+        } else if (eurScore >= 2) {
+          eurRegime = "POSITIVE";
+        } else if (eurScore <= -4) {
+          eurRegime = "WEAK";
+        } else if (eurScore <= -2) {
+          eurRegime = "NEGATIVE";
+        }
+
+        let usdRegime = "NEUTRAL";
+
+        if (usdScore >= 5) {
+          usdRegime = "STRONG";
+        } else if (usdScore >= 2) {
+          usdRegime = "POSITIVE";
+        } else if (usdScore <= -5) {
+          usdRegime = "WEAK";
+        } else if (usdScore <= -2) {
+          usdRegime = "NEGATIVE";
+        }
 
         return Response.json({
 
@@ -515,9 +680,31 @@ export default {
 
           pair: "EUR/USD",
 
-          eur_score: eurScore,
+          provider: "FRED",
 
-          usd_score: usdScore,
+          eur: {
+            score: eurScore,
+            regime: eurRegime,
+            changes: eurChanges,
+            scores: {
+              interest: eurInterestScore,
+              inflation: eurInflationScore,
+              growth: eurGrowthScore
+            }
+          },
+
+          usd: {
+            score: usdScore,
+            regime: usdRegime,
+            changes: usdChanges,
+            scores: {
+              interest: usdInterestScore,
+              inflation: usdInflationScore,
+              growth: usdGrowthScore,
+              employment: usdEmploymentScore,
+              liquidity: usdLiquidityScore
+            }
+          },
 
           differential,
 
@@ -527,7 +714,16 @@ export default {
             `EUR score (${eurScore}) - USD score (${usdScore}) = differential (${differential})`,
 
           next_stage:
-            "Price divergence"
+            "Price divergence",
+
+          framework: [
+            "Macro fundamentals",
+            "Currency scores",
+            "Fundamental differential",
+            "Price divergence",
+            "Technical confirmation",
+            "Rule-based action"
+          ]
 
         });
 
@@ -539,12 +735,13 @@ export default {
 
           pair: "EUR/USD",
 
+          provider: "FRED",
+
           error: error.message
 
         });
 
       }
-
     }
 
     // ==========================================
