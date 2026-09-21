@@ -1320,6 +1320,84 @@ export default {
     }
 
     // ==========================================
+    // TWELVE DATA — TECHNICAL DATA TEST
+    // ==========================================
+    if (url.pathname === "/api/technical-data-test") {
+
+      if (!env.TWELVE_DATA_API_KEY) {
+        return Response.json({
+          success: false,
+          provider: "Twelve Data",
+          error: "TWELVE_DATA_API_KEY is not configured."
+        });
+      }
+
+      const interval =
+        url.searchParams.get("interval") || "1h";
+
+      if (!["1h", "4h"].includes(interval)) {
+        return Response.json({
+          success: false,
+          provider: "Twelve Data",
+          error: "Interval must be 1h or 4h."
+        });
+      }
+
+      const apiUrl =
+        `https://api.twelvedata.com/time_series` +
+        `?symbol=EUR%2FUSD` +
+        `&interval=${encodeURIComponent(interval)}` +
+        `&outputsize=10` +
+        `&timezone=UTC` +
+        `&apikey=${encodeURIComponent(env.TWELVE_DATA_API_KEY)}`;
+
+      try {
+
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+
+        if (!response.ok) {
+          return Response.json({
+            success: false,
+            provider: "Twelve Data",
+            interval,
+            error: `HTTP ${response.status}`,
+            data
+          });
+        }
+
+        if (data.status === "error") {
+          return Response.json({
+            success: false,
+            provider: "Twelve Data",
+            interval,
+            error: data.message || "Twelve Data returned an error.",
+            code: data.code || null
+          });
+        }
+
+        return Response.json({
+          success: true,
+          provider: "Twelve Data",
+          pair: "EUR/USD",
+          interval,
+          candles: data.values || [],
+          meta: data.meta || null
+        });
+
+      } catch (error) {
+
+        return Response.json({
+          success: false,
+          provider: "Twelve Data",
+          interval,
+          error: error.message
+        });
+
+      }
+    }
+
+    // ==========================================
     // SERVE THE APP
     // ==========================================
     return env.ASSETS.fetch(request);
