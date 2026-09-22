@@ -1104,8 +1104,6 @@ export default {
           });
         }
 
-        // Exclude the newest candle from structural confirmation.
-        // It may still be forming.
         const analysisCandles =
           candles.length > 3
             ? candles.slice(0, -1)
@@ -1155,7 +1153,7 @@ export default {
             if (i === 0) {
               return {
                 ...current,
-                type: high ? "FIRST" : "FIRST"
+                type: "FIRST"
               };
             }
 
@@ -1273,7 +1271,6 @@ export default {
           const demand = [];
           const supply = [];
 
-          // Test 1, 2, 3 and 4 candle bases.
           for (
             let baseLength = 1;
             baseLength <= 4;
@@ -1421,9 +1418,7 @@ export default {
           pair: "EUR/USD",
           timeframe: "H4",
           candle_count: candles.length,
-
           latest: latestCandle,
-
           last_completed_candle:
             lastCompletedCandle,
 
@@ -2012,6 +2007,9 @@ export default {
         );
       }
 
+      // ==========================================================
+      // IMPROVED H1 RETRACEMENT DETECTOR
+      // ==========================================================
       function detectRetracement(
         candles,
         direction
@@ -2019,7 +2017,7 @@ export default {
         const completed =
           candles.slice(0, -1);
 
-        if (completed.length < 15) {
+        if (completed.length < 20) {
           return {
             present: false,
             type: "NONE",
@@ -2029,100 +2027,367 @@ export default {
         }
 
         const recent =
-          completed.slice(-15);
+          completed.slice(-20);
 
-        const first =
-          recent[0].close;
-
-        const latest =
-          recent[recent.length - 1].close;
-
-        const high =
-          Math.max(
-            ...recent.map(
-              c => c.high
-            )
+        const ranges =
+          recent.map(
+            c => c.high - c.low
           );
 
-        const low =
-          Math.min(
-            ...recent.map(
-              c => c.low
-            )
-          );
+        const averageRange =
+          ranges.reduce(
+            (sum, value) =>
+              sum + value,
+            0
+          ) / ranges.length;
 
-        const range = high - low;
-
-        if (range <= 0) {
+        if (
+          !Number.isFinite(averageRange) ||
+          averageRange <= 0
+        ) {
           return {
             present: false,
-            type: "NONE"
+            type: "NONE",
+            description:
+              "Unable to calculate H1 average range."
           };
         }
 
-        const netMove =
-          latest - first;
-
+        // --------------------------------------------------------
+        // BULLISH IMPULSE -> CONTROLLED PULLBACK
+        // --------------------------------------------------------
         if (direction === "BULLISH") {
-          const pullback =
-            high - latest;
+          let bestCandidate = null;
 
-          const controlled =
-            pullback <=
-            range * 0.60;
-
-          const notBroken =
-            latest >=
-            low +
-              range * 0.30;
-
-          const hasPriorAdvance =
-            high >
-            first +
-              range * 0.30;
-
-          if (
-            controlled &&
-            notBroken &&
-            hasPriorAdvance
+          for (
+            let highIndex = 6;
+            highIndex < recent.length - 2;
+            highIndex++
           ) {
+            const impulseHigh =
+              recent[highIndex].high;
+
+            const originWindow =
+              recent.slice(
+                Math.max(0, highIndex - 6),
+                highIndex
+              );
+
+            if (!originWindow.length) {
+              continue;
+            }
+
+            const originLow =
+              Math.min(
+                ...originWindow.map(
+                  c => c.low
+                )
+              );
+
+            const impulseSize =
+              impulseHigh - originLow;
+
+            if (
+              impulseSize <
+              averageRange * 1.5
+            ) {
+              continue;
+            }
+
+            const pullbackCandles =
+              recent.slice(
+                highIndex + 1
+              );
+
+            if (
+              pullbackCandles.length < 2
+            ) {
+              continue;
+            }
+
+            const pullbackLow =
+              Math.min(
+                ...pullbackCandles.map(
+                  c => c.low
+                )
+              );
+
+            const currentClose =
+              recent[
+                recent.length - 1
+              ].close;
+
+            const retracementSize =
+              impulseHigh -
+              pullbackLow;
+
+            if (
+              retracementSize <= 0
+            ) {
+              continue;
+            }
+
+            const retracementRatio =
+              retracementSize /
+              impulseSize;
+
+            const controlled =
+              retracementRatio >= 0.15 &&
+              retracementRatio <= 0.65;
+
+            const structureHeld =
+              pullbackLow >
+              originLow;
+
+            const currentPosition =
+              (currentClose -
+                pullbackLow) /
+              retracementSize;
+
+            const pullbackStillRelevant =
+              currentPosition >= 0 &&
+              currentPosition <= 1.25;
+
+            const bullishCandles =
+              pullbackCandles.filter(
+                c =>
+                  c.close > c.open
+              ).length;
+
+            const bearishCandles =
+              pullbackCandles.filter(
+                c =>
+                  c.close < c.open
+              ).length;
+
+            const actualPullback =
+              bearishCandles >= 1 ||
+              pullbackCandles.length <= 3;
+
+            if (
+              controlled &&
+              structureHeld &&
+              pullbackStillRelevant &&
+              actualPullback
+            ) {
+              bestCandidate = {
+                impulseHigh,
+                originLow,
+                pullbackLow,
+                impulseSize,
+                retracementSize,
+                retracementRatio,
+                bullishCandles,
+                bearishCandles
+              };
+            }
+          }
+
+          if (bestCandidate) {
             return {
               present: true,
               type: "BULLISH_PULLBACK",
               description:
-                "H1 shows a controlled pullback after an upward price advance."
+                "H1 shows a meaningful bullish impulse followed by a controlled pullback that has not broken the impulse origin.",
+              details: {
+                impulseHigh:
+                  Number(
+                    bestCandidate.impulseHigh.toFixed(5)
+                  ),
+                originLow:
+                  Number(
+                    bestCandidate.originLow.toFixed(5)
+                  ),
+                pullbackLow:
+                  Number(
+                    bestCandidate.pullbackLow.toFixed(5)
+                  ),
+                impulseSize:
+                  Number(
+                    bestCandidate.impulseSize.toFixed(5)
+                  ),
+                retracementSize:
+                  Number(
+                    bestCandidate.retracementSize.toFixed(5)
+                  ),
+                retracementPercent:
+                  Number(
+                    (
+                      bestCandidate.retracementRatio *
+                      100
+                    ).toFixed(1)
+                  )
+              }
             };
           }
         }
 
+        // --------------------------------------------------------
+        // BEARISH IMPULSE -> CONTROLLED PULLBACK
+        // --------------------------------------------------------
         if (direction === "BEARISH") {
-          const pullback =
-            latest - low;
+          let bestCandidate = null;
 
-          const controlled =
-            pullback <=
-            range * 0.60;
-
-          const notBroken =
-            latest <=
-            high -
-              range * 0.30;
-
-          const hasPriorDecline =
-            low <
-            first -
-              range * 0.30;
-
-          if (
-            controlled &&
-            notBroken &&
-            hasPriorDecline
+          for (
+            let lowIndex = 6;
+            lowIndex < recent.length - 2;
+            lowIndex++
           ) {
+            const impulseLow =
+              recent[lowIndex].low;
+
+            const originWindow =
+              recent.slice(
+                Math.max(0, lowIndex - 6),
+                lowIndex
+              );
+
+            if (!originWindow.length) {
+              continue;
+            }
+
+            const originHigh =
+              Math.max(
+                ...originWindow.map(
+                  c => c.high
+                )
+              );
+
+            const impulseSize =
+              originHigh -
+              impulseLow;
+
+            if (
+              impulseSize <
+              averageRange * 1.5
+            ) {
+              continue;
+            }
+
+            const pullbackCandles =
+              recent.slice(
+                lowIndex + 1
+              );
+
+            if (
+              pullbackCandles.length < 2
+            ) {
+              continue;
+            }
+
+            const pullbackHigh =
+              Math.max(
+                ...pullbackCandles.map(
+                  c => c.high
+                )
+              );
+
+            const currentClose =
+              recent[
+                recent.length - 1
+              ].close;
+
+            const retracementSize =
+              pullbackHigh -
+              impulseLow;
+
+            if (
+              retracementSize <= 0
+            ) {
+              continue;
+            }
+
+            const retracementRatio =
+              retracementSize /
+              impulseSize;
+
+            const controlled =
+              retracementRatio >= 0.15 &&
+              retracementRatio <= 0.65;
+
+            const structureHeld =
+              pullbackHigh <
+              originHigh;
+
+            const currentPosition =
+              (pullbackHigh -
+                currentClose) /
+              retracementSize;
+
+            const pullbackStillRelevant =
+              currentPosition >= 0 &&
+              currentPosition <= 1.25;
+
+            const bullishCandles =
+              pullbackCandles.filter(
+                c =>
+                  c.close > c.open
+              ).length;
+
+            const bearishCandles =
+              pullbackCandles.filter(
+                c =>
+                  c.close < c.open
+              ).length;
+
+            const actualPullback =
+              bullishCandles >= 1 ||
+              pullbackCandles.length <= 3;
+
+            if (
+              controlled &&
+              structureHeld &&
+              pullbackStillRelevant &&
+              actualPullback
+            ) {
+              bestCandidate = {
+                impulseLow,
+                originHigh,
+                pullbackHigh,
+                impulseSize,
+                retracementSize,
+                retracementRatio,
+                bullishCandles,
+                bearishCandles
+              };
+            }
+          }
+
+          if (bestCandidate) {
             return {
               present: true,
               type: "BEARISH_PULLBACK",
               description:
-                "H1 shows a controlled pullback after a downward price decline."
+                "H1 shows a meaningful bearish impulse followed by a controlled upward pullback that has not broken the impulse origin.",
+              details: {
+                impulseLow:
+                  Number(
+                    bestCandidate.impulseLow.toFixed(5)
+                  ),
+                originHigh:
+                  Number(
+                    bestCandidate.originHigh.toFixed(5)
+                  ),
+                pullbackHigh:
+                  Number(
+                    bestCandidate.pullbackHigh.toFixed(5)
+                  ),
+                impulseSize:
+                  Number(
+                    bestCandidate.impulseSize.toFixed(5)
+                  ),
+                retracementSize:
+                  Number(
+                    bestCandidate.retracementSize.toFixed(5)
+                  ),
+                retracementPercent:
+                  Number(
+                    (
+                      bestCandidate.retracementRatio *
+                      100
+                    ).toFixed(1)
+                  )
+              }
             };
           }
         }
@@ -2296,9 +2561,12 @@ export default {
             h4AverageRange
           );
 
+        // IMPORTANT:
+        // Use the LAST COMPLETED H4 candle
+        // for location analysis.
         const h4Latest =
-          h4Candles[
-            h4Candles.length - 1
+          h4Analysis[
+            h4Analysis.length - 1
           ];
 
         const h4Support =
@@ -2623,9 +2891,7 @@ export default {
 
         return Response.json({
           success: true,
-
           provider: "Twelve Data",
-
           pair: symbol,
 
           technical_status:
@@ -2757,7 +3023,7 @@ export default {
               "Price should be near a qualifying H4 supply/demand zone or nearby H4 support/resistance.",
 
             retracement:
-              "H1 should show a controlled pullback after an identifiable directional move.",
+              "H1 retracement requires a meaningful directional impulse followed by a controlled pullback that does not destroy the impulse origin.",
 
             confirmation:
               "The H1 candle must close beyond the relevant H1 swing level in the direction of the H4 context.",
