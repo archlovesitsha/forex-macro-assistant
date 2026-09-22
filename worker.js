@@ -508,7 +508,8 @@ export default {
           usdEmploymentScore +
           usdLiquidityScore;
 
-        const differential = eurScore - usdScore;
+        const differential =
+          eurScore - usdScore;
 
         let bias = "NEUTRAL";
 
@@ -651,7 +652,8 @@ export default {
           throw new Error("Invalid EUR/USD price data returned.");
         }
 
-        const priceChange = latestPrice - firstPrice;
+        const priceChange =
+          latestPrice - firstPrice;
 
         const priceChangePercent =
           (priceChange / firstPrice) * 100;
@@ -696,7 +698,8 @@ export default {
             `&sort_order=desc` +
             `&limit=5`;
 
-          const fredResponse = await fetch(apiUrl);
+          const fredResponse =
+            await fetch(apiUrl);
 
           if (!fredResponse.ok) {
             throw new Error(
@@ -704,10 +707,13 @@ export default {
             );
           }
 
-          const data = await fredResponse.json();
+          const data =
+            await fredResponse.json();
 
           if (!data.observations) {
-            throw new Error(`No observations returned for ${series}`);
+            throw new Error(
+              `No observations returned for ${series}`
+            );
           }
 
           return data.observations
@@ -727,11 +733,13 @@ export default {
         const usdRaw = {};
 
         for (const [factor, series] of Object.entries(eurSeries)) {
-          eurRaw[factor] = await getFredSeries(series);
+          eurRaw[factor] =
+            await getFredSeries(series);
         }
 
         for (const [factor, series] of Object.entries(usdSeries)) {
-          usdRaw[factor] = await getFredSeries(series);
+          usdRaw[factor] =
+            await getFredSeries(series);
         }
 
         const eurChanges = {
@@ -794,7 +802,8 @@ export default {
           usdEmploymentScore +
           usdLiquidityScore;
 
-        const differential = eurScore - usdScore;
+        const differential =
+          eurScore - usdScore;
 
         let fundamentalDirection = "FLAT";
 
@@ -852,7 +861,9 @@ export default {
             },
             change: priceChange,
             changePercent:
-              Number(priceChangePercent.toFixed(4)),
+              Number(
+                priceChangePercent.toFixed(4)
+              ),
             direction: priceDirection
           },
 
@@ -917,19 +928,39 @@ export default {
 
       for (const currency of currencies) {
         const interest =
-          Number(url.searchParams.get(`${currency}_interest`) || 0);
+          Number(
+            url.searchParams.get(
+              `${currency}_interest`
+            ) || 0
+          );
 
         const inflation =
-          Number(url.searchParams.get(`${currency}_inflation`) || 0);
+          Number(
+            url.searchParams.get(
+              `${currency}_inflation`
+            ) || 0
+          );
 
         const growth =
-          Number(url.searchParams.get(`${currency}_growth`) || 0);
+          Number(
+            url.searchParams.get(
+              `${currency}_growth`
+            ) || 0
+          );
 
         const employment =
-          Number(url.searchParams.get(`${currency}_employment`) || 0);
+          Number(
+            url.searchParams.get(
+              `${currency}_employment`
+            ) || 0
+          );
 
         const centralBank =
-          Number(url.searchParams.get(`${currency}_centralbank`) || 0);
+          Number(
+            url.searchParams.get(
+              `${currency}_centralbank`
+            ) || 0
+          );
 
         const total =
           interest +
@@ -969,18 +1000,25 @@ export default {
         (url.searchParams.get("pair") || "EUR/USD").toUpperCase();
 
       const base =
-        Number(url.searchParams.get("base") || 0);
+        Number(
+          url.searchParams.get("base") || 0
+        );
 
       const quote =
-        Number(url.searchParams.get("quote") || 0);
+        Number(
+          url.searchParams.get("quote") || 0
+        );
 
       const technical =
-        Number(url.searchParams.get("technical") || 0);
+        Number(
+          url.searchParams.get("technical") || 0
+        );
 
       const divergence =
         url.searchParams.get("divergence") === "true";
 
-      const differential = base - quote;
+      const differential =
+        base - quote;
 
       let action = "PASS";
 
@@ -1049,7 +1087,8 @@ export default {
         return Response.json({
           success: false,
           provider: "Twelve Data",
-          error: "TWELVE_DATA_API_KEY is not configured."
+          error:
+            "TWELVE_DATA_API_KEY is not configured."
         });
       }
 
@@ -1062,13 +1101,21 @@ export default {
         `&interval=${interval}` +
         `&outputsize=${outputsize}` +
         `&timezone=UTC` +
-        `&apikey=${encodeURIComponent(env.TWELVE_DATA_API_KEY)}`;
+        `&apikey=${encodeURIComponent(
+          env.TWELVE_DATA_API_KEY
+        )}`;
 
       try {
-        const response = await fetch(apiUrl);
-        const data = await response.json();
+        const response =
+          await fetch(apiUrl);
 
-        if (!response.ok || data.status === "error") {
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          data.status === "error"
+        ) {
           return Response.json({
             success: false,
             provider: "Twelve Data",
@@ -1079,28 +1126,31 @@ export default {
           });
         }
 
-        let candles = (data.values || [])
-          .map(c => ({
-            datetime: c.datetime,
-            open: Number(c.open),
-            high: Number(c.high),
-            low: Number(c.low),
-            close: Number(c.close)
-          }))
-          .filter(c =>
-            Number.isFinite(c.open) &&
-            Number.isFinite(c.high) &&
-            Number.isFinite(c.low) &&
-            Number.isFinite(c.close)
-          )
-          .reverse();
+        let candles =
+          (data.values || [])
+            .map(c => ({
+              datetime: c.datetime,
+              open: Number(c.open),
+              high: Number(c.high),
+              low: Number(c.low),
+              close: Number(c.close)
+            }))
+            .filter(c =>
+              Number.isFinite(c.open) &&
+              Number.isFinite(c.high) &&
+              Number.isFinite(c.low) &&
+              Number.isFinite(c.close)
+            )
+            .reverse();
 
         if (candles.length < 20) {
           return Response.json({
             success: false,
             provider: "Twelve Data",
-            error: "Not enough H4 candles for technical analysis.",
-            candle_count: candles.length
+            error:
+              "Not enough H4 candles for technical analysis.",
+            candle_count:
+              candles.length
           });
         }
 
@@ -1117,24 +1167,34 @@ export default {
           i < analysisCandles.length - 2;
           i++
         ) {
-          const current = analysisCandles[i];
+          const current =
+            analysisCandles[i];
 
           const isSwingHigh =
-            current.high > analysisCandles[i - 1].high &&
-            current.high > analysisCandles[i - 2].high &&
-            current.high > analysisCandles[i + 1].high &&
-            current.high > analysisCandles[i + 2].high;
+            current.high >
+              analysisCandles[i - 1].high &&
+            current.high >
+              analysisCandles[i - 2].high &&
+            current.high >
+              analysisCandles[i + 1].high &&
+            current.high >
+              analysisCandles[i + 2].high;
 
           const isSwingLow =
-            current.low < analysisCandles[i - 1].low &&
-            current.low < analysisCandles[i - 2].low &&
-            current.low < analysisCandles[i + 1].low &&
-            current.low < analysisCandles[i + 2].low;
+            current.low <
+              analysisCandles[i - 1].low &&
+            current.low <
+              analysisCandles[i - 2].low &&
+            current.low <
+              analysisCandles[i + 1].low &&
+            current.low <
+              analysisCandles[i + 2].low;
 
           if (isSwingHigh) {
             swingHighs.push({
               index: i,
-              datetime: current.datetime,
+              datetime:
+                current.datetime,
               price: current.high
             });
           }
@@ -1142,43 +1202,68 @@ export default {
           if (isSwingLow) {
             swingLows.push({
               index: i,
-              datetime: current.datetime,
+              datetime:
+                current.datetime,
               price: current.low
             });
           }
         }
 
         function classify(list, high) {
-          return list.map((current, i) => {
-            if (i === 0) {
+          return list.map(
+            (current, i) => {
+              if (i === 0) {
+                return {
+                  ...current,
+                  type: "FIRST"
+                };
+              }
+
+              const previous =
+                list[i - 1];
+
+              let type =
+                high
+                  ? "EH"
+                  : "EL";
+
+              if (
+                current.price >
+                previous.price
+              ) {
+                type =
+                  high
+                    ? "HH"
+                    : "HL";
+              } else if (
+                current.price <
+                previous.price
+              ) {
+                type =
+                  high
+                    ? "LH"
+                    : "LL";
+              }
+
               return {
                 ...current,
-                type: "FIRST"
+                type
               };
             }
-
-            const previous = list[i - 1];
-
-            let type = high ? "EH" : "EL";
-
-            if (current.price > previous.price) {
-              type = high ? "HH" : "HL";
-            } else if (current.price < previous.price) {
-              type = high ? "LH" : "LL";
-            }
-
-            return {
-              ...current,
-              type
-            };
-          });
+          );
         }
 
         const classifiedHighs =
-          classify(swingHighs, true);
+          classify(
+            swingHighs,
+            true
+          );
 
         const classifiedLows =
-          classify(swingLows, false);
+          classify(
+            swingLows,
+            false
+          );
 
         function determineStructure() {
           if (
@@ -1189,24 +1274,36 @@ export default {
           }
 
           const previousHigh =
-            swingHighs[swingHighs.length - 2];
+            swingHighs[
+              swingHighs.length - 2
+            ];
 
           const latestHigh =
-            swingHighs[swingHighs.length - 1];
+            swingHighs[
+              swingHighs.length - 1
+            ];
 
           const previousLow =
-            swingLows[swingLows.length - 2];
+            swingLows[
+              swingLows.length - 2
+            ];
 
           const latestLow =
-            swingLows[swingLows.length - 1];
+            swingLows[
+              swingLows.length - 1
+            ];
 
           const bullish =
-            latestHigh.price > previousHigh.price &&
-            latestLow.price > previousLow.price;
+            latestHigh.price >
+              previousHigh.price &&
+            latestLow.price >
+              previousLow.price;
 
           const bearish =
-            latestHigh.price < previousHigh.price &&
-            latestLow.price < previousLow.price;
+            latestHigh.price <
+              previousHigh.price &&
+            latestLow.price <
+              previousLow.price;
 
           if (bullish) return "BULLISH";
           if (bearish) return "BEARISH";
@@ -1221,7 +1318,9 @@ export default {
           candles[candles.length - 1];
 
         const lastCompletedCandle =
-          analysisCandles[analysisCandles.length - 1];
+          analysisCandles[
+            analysisCandles.length - 1
+          ];
 
         let bos = "NONE";
         let bosLevel = null;
@@ -1229,14 +1328,17 @@ export default {
 
         if (swingHighs.length) {
           const lastHigh =
-            swingHighs[swingHighs.length - 1];
+            swingHighs[
+              swingHighs.length - 1
+            ];
 
           if (
             lastCompletedCandle.close >
             lastHigh.price
           ) {
             bos = "BULLISH";
-            bosLevel = lastHigh.price;
+            bosLevel =
+              lastHigh.price;
             bosDatetime =
               lastCompletedCandle.datetime;
           }
@@ -1244,14 +1346,17 @@ export default {
 
         if (swingLows.length) {
           const lastLow =
-            swingLows[swingLows.length - 1];
+            swingLows[
+              swingLows.length - 1
+            ];
 
           if (
             lastCompletedCandle.close <
             lastLow.price
           ) {
             bos = "BEARISH";
-            bosLevel = lastLow.price;
+            bosLevel =
+              lastLow.price;
             bosDatetime =
               lastCompletedCandle.datetime;
           }
@@ -1263,9 +1368,12 @@ export default {
         const averageRange =
           recentCandles.reduce(
             (sum, candle) =>
-              sum + candle.high - candle.low,
+              sum +
+              candle.high -
+              candle.low,
             0
-          ) / recentCandles.length;
+          ) /
+          recentCandles.length;
 
         function detectZones() {
           const demand = [];
@@ -1278,41 +1386,53 @@ export default {
           ) {
             for (
               let i = baseLength;
-              i < analysisCandles.length - 1;
+              i <
+                analysisCandles.length - 1;
               i++
             ) {
-              const baseStart =
-                i - baseLength + 1;
-
               const base =
                 analysisCandles.slice(
-                  baseStart,
+                  i -
+                    baseLength +
+                    1,
                   i + 1
                 );
 
               const baseHigh =
                 Math.max(
-                  ...base.map(c => c.high)
+                  ...base.map(
+                    c => c.high
+                  )
                 );
 
               const baseLow =
                 Math.min(
-                  ...base.map(c => c.low)
+                  ...base.map(
+                    c => c.low
+                  )
                 );
 
               const baseRange =
                 baseHigh - baseLow;
 
-              if (baseRange <= 0) continue;
+              if (
+                baseRange <= 0
+              ) {
+                continue;
+              }
 
               const departure =
-                analysisCandles[i + 1];
+                analysisCandles[
+                  i + 1
+                ];
 
               const bullishMove =
-                departure.close - baseHigh;
+                departure.close -
+                baseHigh;
 
               const bearishMove =
-                baseLow - departure.close;
+                baseLow -
+                departure.close;
 
               const compact =
                 baseRange <=
@@ -1333,10 +1453,14 @@ export default {
                     departure.datetime,
                   departure:
                     Number(
-                      bullishMove.toFixed(5)
+                      bullishMove.toFixed(
+                        5
+                      )
                     ),
-                  baseCandles: baseLength,
-                  strength: "CANDIDATE"
+                  baseCandles:
+                    baseLength,
+                  strength:
+                    "CANDIDATE"
                 });
               }
 
@@ -1355,29 +1479,37 @@ export default {
                     departure.datetime,
                   departure:
                     Number(
-                      bearishMove.toFixed(5)
+                      bearishMove.toFixed(
+                        5
+                      )
                     ),
-                  baseCandles: baseLength,
-                  strength: "CANDIDATE"
+                  baseCandles:
+                    baseLength,
+                  strength:
+                    "CANDIDATE"
                 });
               }
             }
           }
 
           return {
-            demand: demand.slice(-10),
-            supply: supply.slice(-10)
+            demand:
+              demand.slice(-10),
+            supply:
+              supply.slice(-10)
           };
         }
 
-        const zones = detectZones();
+        const zones =
+          detectZones();
 
         const support =
           swingLows
             .slice(-5)
             .map(x => ({
               price: x.price,
-              datetime: x.datetime,
+              datetime:
+                x.datetime,
               timeframe: "H4"
             }));
 
@@ -1386,7 +1518,8 @@ export default {
             .slice(-5)
             .map(x => ({
               price: x.price,
-              datetime: x.datetime,
+              datetime:
+                x.datetime,
               timeframe: "H4"
             }));
 
@@ -1394,19 +1527,22 @@ export default {
           "NOT_CONFIRMED";
 
         if (
-          structure === "BULLISH" &&
+          structure ===
+            "BULLISH" &&
           bos === "BULLISH"
         ) {
           technicalStatus =
             "BULLISH_STRUCTURE";
         } else if (
-          structure === "BEARISH" &&
+          structure ===
+            "BEARISH" &&
           bos === "BEARISH"
         ) {
           technicalStatus =
             "BEARISH_STRUCTURE";
         } else if (
-          structure === "TRANSITION"
+          structure ===
+          "TRANSITION"
         ) {
           technicalStatus =
             "TRANSITION";
@@ -1414,38 +1550,55 @@ export default {
 
         return Response.json({
           success: true,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           pair: "EUR/USD",
           timeframe: "H4",
-          candle_count: candles.length,
-          latest: latestCandle,
+          candle_count:
+            candles.length,
+          latest:
+            latestCandle,
           last_completed_candle:
             lastCompletedCandle,
 
           market_structure: {
-            direction: structure,
+            direction:
+              structure,
             bullish:
-              structure === "BULLISH",
+              structure ===
+              "BULLISH",
             bearish:
-              structure === "BEARISH"
+              structure ===
+              "BEARISH"
           },
 
           swing_points: {
             highs:
-              classifiedHighs.slice(-10),
+              classifiedHighs.slice(
+                -10
+              ),
             lows:
-              classifiedLows.slice(-10)
+              classifiedLows.slice(
+                -10
+              )
           },
 
           break_of_structure: {
             direction: bos,
             level: bosLevel,
-            datetime: bosDatetime
+            datetime:
+              bosDatetime
           },
 
           zones: {
-            demand: zones.demand.slice(-5),
-            supply: zones.supply.slice(-5)
+            demand:
+              zones.demand.slice(
+                -5
+              ),
+            supply:
+              zones.supply.slice(
+                -5
+              )
           },
 
           support,
@@ -1454,7 +1607,9 @@ export default {
           volatility: {
             averageRange:
               Number(
-                averageRange.toFixed(5)
+                averageRange.toFixed(
+                  5
+                )
               )
           },
 
@@ -1485,10 +1640,12 @@ export default {
       } catch (error) {
         return Response.json({
           success: false,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           pair: "EUR/USD",
           interval: "4h",
-          error: error.message
+          error:
+            error.message
         });
       }
     }
@@ -1497,20 +1654,29 @@ export default {
     // H1 TECHNICAL CONFIRMATION ENGINE
     // H4 CONTEXT → H1 RETRACEMENT → H1 BOS
     // ============================================================
-    if (url.pathname === "/api/technical-confirmation") {
+    if (
+      url.pathname ===
+      "/api/technical-confirmation"
+    ) {
       if (!env.TWELVE_DATA_API_KEY) {
         return Response.json({
           success: false,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           error:
             "TWELVE_DATA_API_KEY is not configured."
         });
       }
 
-      const symbol = "EUR/USD";
-      const outputsize = 100;
+      const symbol =
+        "EUR/USD";
 
-      async function getCandles(interval) {
+      const outputsize =
+        100;
+
+      async function getCandles(
+        interval
+      ) {
         const apiUrl =
           `https://api.twelvedata.com/time_series` +
           `?symbol=EUR%2FUSD` +
@@ -1529,91 +1695,144 @@ export default {
 
         if (
           !response.ok ||
-          data.status === "error"
+          data.status ===
+            "error"
         ) {
           throw new Error(
             data.message ||
-            `Twelve Data ${interval} request failed: HTTP ${response.status}`
+              `Twelve Data ${interval} request failed: HTTP ${response.status}`
           );
         }
 
-        return (data.values || [])
+        return (
+          data.values || []
+        )
           .map(c => ({
-            datetime: c.datetime,
-            open: Number(c.open),
-            high: Number(c.high),
-            low: Number(c.low),
-            close: Number(c.close)
+            datetime:
+              c.datetime,
+            open: Number(
+              c.open
+            ),
+            high: Number(
+              c.high
+            ),
+            low: Number(
+              c.low
+            ),
+            close: Number(
+              c.close
+            )
           }))
           .filter(c =>
-            Number.isFinite(c.open) &&
-            Number.isFinite(c.high) &&
-            Number.isFinite(c.low) &&
-            Number.isFinite(c.close)
+            Number.isFinite(
+              c.open
+            ) &&
+            Number.isFinite(
+              c.high
+            ) &&
+            Number.isFinite(
+              c.low
+            ) &&
+            Number.isFinite(
+              c.close
+            )
           )
           .reverse();
       }
 
-      function findSwings(candles) {
+      function findSwings(
+        candles
+      ) {
         const highs = [];
         const lows = [];
 
         for (
           let i = 2;
-          i < candles.length - 2;
+          i <
+            candles.length - 2;
           i++
         ) {
-          const c = candles[i];
+          const c =
+            candles[i];
 
           const isHigh =
-            c.high > candles[i - 1].high &&
-            c.high > candles[i - 2].high &&
-            c.high > candles[i + 1].high &&
-            c.high > candles[i + 2].high;
+            c.high >
+              candles[i - 1]
+                .high &&
+            c.high >
+              candles[i - 2]
+                .high &&
+            c.high >
+              candles[i + 1]
+                .high &&
+            c.high >
+              candles[i + 2]
+                .high;
 
           const isLow =
-            c.low < candles[i - 1].low &&
-            c.low < candles[i - 2].low &&
-            c.low < candles[i + 1].low &&
-            c.low < candles[i + 2].low;
+            c.low <
+              candles[i - 1]
+                .low &&
+            c.low <
+              candles[i - 2]
+                .low &&
+            c.low <
+              candles[i + 1]
+                .low &&
+            c.low <
+              candles[i + 2]
+                .low;
 
           if (isHigh) {
             highs.push({
               index: i,
-              datetime: c.datetime,
-              price: c.high
+              datetime:
+                c.datetime,
+              price:
+                c.high
             });
           }
 
           if (isLow) {
             lows.push({
               index: i,
-              datetime: c.datetime,
-              price: c.low
+              datetime:
+                c.datetime,
+              price:
+                c.low
             });
           }
         }
 
-        return { highs, lows };
+        return {
+          highs,
+          lows
+        };
       }
 
-      function classifySwings(swings) {
+      function classifySwings(
+        swings
+      ) {
         const highs = [];
         const lows = [];
 
         for (
           let i = 0;
-          i < swings.highs.length;
+          i <
+            swings.highs.length;
           i++
         ) {
           const current =
             swings.highs[i];
 
-          let type = "FIRST";
+          let type =
+            "FIRST";
 
           if (i > 0) {
             const previous =
-              swings.highs[i - 1];
+              swings.highs[
+                i - 1
+              ];
 
             if (
               current.price >
@@ -1638,17 +1857,21 @@ export default {
 
         for (
           let i = 0;
-          i < swings.lows.length;
+          i <
+            swings.lows.length;
           i++
         ) {
           const current =
             swings.lows[i];
 
-          let type = "FIRST";
+          let type =
+            "FIRST";
 
           if (i > 0) {
             const previous =
-              swings.lows[i - 1];
+              swings.lows[
+                i - 1
+              ];
 
             if (
               current.price >
@@ -1671,13 +1894,20 @@ export default {
           });
         }
 
-        return { highs, lows };
+        return {
+          highs,
+          lows
+        };
       }
 
-      function determineStructure(swings) {
+      function determineStructure(
+        swings
+      ) {
         if (
-          swings.highs.length < 2 ||
-          swings.lows.length < 2
+          swings.highs.length <
+            2 ||
+          swings.lows.length <
+            2
         ) {
           return "NEUTRAL";
         }
@@ -1714,8 +1944,11 @@ export default {
           latestLow.price <
             previousLow.price;
 
-        if (bullish) return "BULLISH";
-        if (bearish) return "BEARISH";
+        if (bullish)
+          return "BULLISH";
+
+        if (bearish)
+          return "BEARISH";
 
         return "NEUTRAL";
       }
@@ -1724,9 +1957,12 @@ export default {
         candles,
         swings
       ) {
-        if (candles.length < 10) {
+        if (
+          candles.length < 10
+        ) {
           return {
-            direction: "NONE",
+            direction:
+              "NONE",
             level: null,
             datetime: null,
             close: null
@@ -1736,11 +1972,13 @@ export default {
         const completed =
           candles.slice(0, -1);
 
-        let latestEvent = null;
+        let latestEvent =
+          null;
 
         for (
           let i = 0;
-          i < completed.length;
+          i <
+            completed.length;
           i++
         ) {
           const candle =
@@ -1759,14 +1997,16 @@ export default {
           const lastHigh =
             priorHighs.length
               ? priorHighs[
-                  priorHighs.length - 1
+                  priorHighs.length -
+                    1
                 ]
               : null;
 
           const lastLow =
             priorLows.length
               ? priorLows[
-                  priorLows.length - 1
+                  priorLows.length -
+                    1
                 ]
               : null;
 
@@ -1776,10 +2016,14 @@ export default {
               lastHigh.price
           ) {
             latestEvent = {
-              direction: "BULLISH",
-              level: lastHigh.price,
-              datetime: candle.datetime,
-              close: candle.close,
+              direction:
+                "BULLISH",
+              level:
+                lastHigh.price,
+              datetime:
+                candle.datetime,
+              close:
+                candle.close,
               index: i
             };
           }
@@ -1790,10 +2034,14 @@ export default {
               lastLow.price
           ) {
             latestEvent = {
-              direction: "BEARISH",
-              level: lastLow.price,
-              datetime: candle.datetime,
-              close: candle.close,
+              direction:
+                "BEARISH",
+              level:
+                lastLow.price,
+              datetime:
+                candle.datetime,
+              close:
+                candle.close,
               index: i
             };
           }
@@ -1801,7 +2049,8 @@ export default {
 
         return (
           latestEvent || {
-            direction: "NONE",
+            direction:
+              "NONE",
             level: null,
             datetime: null,
             close: null
@@ -1814,9 +2063,15 @@ export default {
         lookback = 20
       ) {
         const selected =
-          candles.slice(-lookback);
+          candles.slice(
+            -lookback
+          );
 
-        if (!selected.length) return 0;
+        if (
+          !selected.length
+        ) {
+          return 0;
+        }
 
         return (
           selected.reduce(
@@ -1825,7 +2080,8 @@ export default {
               candle.high -
               candle.low,
             0
-          ) / selected.length
+          ) /
+          selected.length
         );
       }
 
@@ -1843,12 +2099,15 @@ export default {
         ) {
           for (
             let i = length;
-            i < candles.length - 1;
+            i <
+              candles.length - 1;
             i++
           ) {
             const base =
               candles.slice(
-                i - length + 1,
+                i -
+                  length +
+                  1,
                 i + 1
               );
 
@@ -1867,9 +2126,12 @@ export default {
               );
 
             const baseRange =
-              baseHigh - baseLow;
+              baseHigh -
+              baseLow;
 
-            if (baseRange <= 0) {
+            if (
+              baseRange <= 0
+            ) {
               continue;
             }
 
@@ -1894,19 +2156,27 @@ export default {
                 avgRange * 1.5
             ) {
               demand.push({
-                type: "DEMAND",
-                from: baseLow,
-                to: baseHigh,
+                type:
+                  "DEMAND",
+                from:
+                  baseLow,
+                to:
+                  baseHigh,
                 createdAt:
-                  base[0].datetime,
+                  base[0]
+                    .datetime,
                 departureAt:
                   departure.datetime,
                 departure:
                   Number(
-                    bullishMove.toFixed(5)
+                    bullishMove.toFixed(
+                      5
+                    )
                   ),
-                baseCandles: length,
-                strength: "CANDIDATE"
+                baseCandles:
+                  length,
+                strength:
+                  "CANDIDATE"
               });
             }
 
@@ -1916,27 +2186,37 @@ export default {
                 avgRange * 1.5
             ) {
               supply.push({
-                type: "SUPPLY",
-                from: baseLow,
-                to: baseHigh,
+                type:
+                  "SUPPLY",
+                from:
+                  baseLow,
+                to:
+                  baseHigh,
                 createdAt:
-                  base[0].datetime,
+                  base[0]
+                    .datetime,
                 departureAt:
                   departure.datetime,
                 departure:
                   Number(
-                    bearishMove.toFixed(5)
+                    bearishMove.toFixed(
+                      5
+                    )
                   ),
-                baseCandles: length,
-                strength: "CANDIDATE"
+                baseCandles:
+                  length,
+                strength:
+                  "CANDIDATE"
               });
             }
           }
         }
 
         return {
-          demand: demand.slice(-10),
-          supply: supply.slice(-10)
+          demand:
+            demand.slice(-10),
+          supply:
+            supply.slice(-10)
         };
       }
 
@@ -1946,20 +2226,28 @@ export default {
       ) {
         const levels =
           swings.lows.filter(
-            x => x.price <= price
+            x =>
+              x.price <= price
           );
 
-        if (!levels.length) {
+        if (
+          !levels.length
+        ) {
           return null;
         }
 
         return levels.reduce(
-          (nearest, current) =>
+          (
+            nearest,
+            current
+          ) =>
             Math.abs(
-              price - current.price
+              price -
+                current.price
             ) <
             Math.abs(
-              price - nearest.price
+              price -
+                nearest.price
             )
               ? current
               : nearest
@@ -1972,20 +2260,28 @@ export default {
       ) {
         const levels =
           swings.highs.filter(
-            x => x.price >= price
+            x =>
+              x.price >= price
           );
 
-        if (!levels.length) {
+        if (
+          !levels.length
+        ) {
           return null;
         }
 
         return levels.reduce(
-          (nearest, current) =>
+          (
+            nearest,
+            current
+          ) =>
             Math.abs(
-              price - current.price
+              price -
+                current.price
             ) <
             Math.abs(
-              price - nearest.price
+              price -
+                nearest.price
             )
               ? current
               : nearest
@@ -1997,13 +2293,16 @@ export default {
         zone,
         tolerance
       ) {
-        if (!zone) return false;
+        if (!zone)
+          return false;
 
         return (
           price >=
-            zone.from - tolerance &&
+            zone.from -
+              tolerance &&
           price <=
-            zone.to + tolerance
+            zone.to +
+              tolerance
         );
       }
 
@@ -2017,7 +2316,10 @@ export default {
         const completed =
           candles.slice(0, -1);
 
-        if (completed.length < 20) {
+        if (
+          completed.length <
+          20
+        ) {
           return {
             present: false,
             type: "NONE",
@@ -2031,7 +2333,8 @@ export default {
 
         const ranges =
           recent.map(
-            c => c.high - c.low
+            c =>
+              c.high - c.low
           );
 
         const averageRange =
@@ -2039,10 +2342,13 @@ export default {
             (sum, value) =>
               sum + value,
             0
-          ) / ranges.length;
+          ) /
+          ranges.length;
 
         if (
-          !Number.isFinite(averageRange) ||
+          !Number.isFinite(
+            averageRange
+          ) ||
           averageRange <= 0
         ) {
           return {
@@ -2056,24 +2362,36 @@ export default {
         // --------------------------------------------------------
         // BULLISH IMPULSE -> CONTROLLED PULLBACK
         // --------------------------------------------------------
-        if (direction === "BULLISH") {
-          let bestCandidate = null;
+        if (
+          direction ===
+          "BULLISH"
+        ) {
+          let bestCandidate =
+            null;
 
           for (
             let highIndex = 6;
-            highIndex < recent.length - 2;
+            highIndex <
+              recent.length - 2;
             highIndex++
           ) {
             const impulseHigh =
-              recent[highIndex].high;
+              recent[
+                highIndex
+              ].high;
 
             const originWindow =
               recent.slice(
-                Math.max(0, highIndex - 6),
+                Math.max(
+                  0,
+                  highIndex - 6
+                ),
                 highIndex
               );
 
-            if (!originWindow.length) {
+            if (
+              !originWindow.length
+            ) {
               continue;
             }
 
@@ -2085,7 +2403,8 @@ export default {
               );
 
             const impulseSize =
-              impulseHigh - originLow;
+              impulseHigh -
+              originLow;
 
             if (
               impulseSize <
@@ -2100,7 +2419,8 @@ export default {
               );
 
             if (
-              pullbackCandles.length < 2
+              pullbackCandles.length <
+              2
             ) {
               continue;
             }
@@ -2132,8 +2452,10 @@ export default {
               impulseSize;
 
             const controlled =
-              retracementRatio >= 0.15 &&
-              retracementRatio <= 0.65;
+              retracementRatio >=
+                0.15 &&
+              retracementRatio <=
+                0.65;
 
             const structureHeld =
               pullbackLow >
@@ -2145,24 +2467,29 @@ export default {
               retracementSize;
 
             const pullbackStillRelevant =
-              currentPosition >= 0 &&
-              currentPosition <= 1.25;
+              currentPosition >=
+                0 &&
+              currentPosition <=
+                1.25;
 
             const bullishCandles =
               pullbackCandles.filter(
                 c =>
-                  c.close > c.open
+                  c.close >
+                  c.open
               ).length;
 
             const bearishCandles =
               pullbackCandles.filter(
                 c =>
-                  c.close < c.open
+                  c.close <
+                  c.open
               ).length;
 
             const actualPullback =
               bearishCandles >= 1 ||
-              pullbackCandles.length <= 3;
+              pullbackCandles.length <=
+                3;
 
             if (
               controlled &&
@@ -2183,32 +2510,45 @@ export default {
             }
           }
 
-          if (bestCandidate) {
+          if (
+            bestCandidate
+          ) {
             return {
               present: true,
-              type: "BULLISH_PULLBACK",
+              type:
+                "BULLISH_PULLBACK",
               description:
                 "H1 shows a meaningful bullish impulse followed by a controlled pullback that has not broken the impulse origin.",
               details: {
                 impulseHigh:
                   Number(
-                    bestCandidate.impulseHigh.toFixed(5)
+                    bestCandidate.impulseHigh.toFixed(
+                      5
+                    )
                   ),
                 originLow:
                   Number(
-                    bestCandidate.originLow.toFixed(5)
+                    bestCandidate.originLow.toFixed(
+                      5
+                    )
                   ),
                 pullbackLow:
                   Number(
-                    bestCandidate.pullbackLow.toFixed(5)
+                    bestCandidate.pullbackLow.toFixed(
+                      5
+                    )
                   ),
                 impulseSize:
                   Number(
-                    bestCandidate.impulseSize.toFixed(5)
+                    bestCandidate.impulseSize.toFixed(
+                      5
+                    )
                   ),
                 retracementSize:
                   Number(
-                    bestCandidate.retracementSize.toFixed(5)
+                    bestCandidate.retracementSize.toFixed(
+                      5
+                    )
                   ),
                 retracementPercent:
                   Number(
@@ -2225,24 +2565,36 @@ export default {
         // --------------------------------------------------------
         // BEARISH IMPULSE -> CONTROLLED PULLBACK
         // --------------------------------------------------------
-        if (direction === "BEARISH") {
-          let bestCandidate = null;
+        if (
+          direction ===
+          "BEARISH"
+        ) {
+          let bestCandidate =
+            null;
 
           for (
             let lowIndex = 6;
-            lowIndex < recent.length - 2;
+            lowIndex <
+              recent.length - 2;
             lowIndex++
           ) {
             const impulseLow =
-              recent[lowIndex].low;
+              recent[
+                lowIndex
+              ].low;
 
             const originWindow =
               recent.slice(
-                Math.max(0, lowIndex - 6),
+                Math.max(
+                  0,
+                  lowIndex - 6
+                ),
                 lowIndex
               );
 
-            if (!originWindow.length) {
+            if (
+              !originWindow.length
+            ) {
               continue;
             }
 
@@ -2270,7 +2622,8 @@ export default {
               );
 
             if (
-              pullbackCandles.length < 2
+              pullbackCandles.length <
+              2
             ) {
               continue;
             }
@@ -2302,8 +2655,10 @@ export default {
               impulseSize;
 
             const controlled =
-              retracementRatio >= 0.15 &&
-              retracementRatio <= 0.65;
+              retracementRatio >=
+                0.15 &&
+              retracementRatio <=
+                0.65;
 
             const structureHeld =
               pullbackHigh <
@@ -2315,24 +2670,29 @@ export default {
               retracementSize;
 
             const pullbackStillRelevant =
-              currentPosition >= 0 &&
-              currentPosition <= 1.25;
+              currentPosition >=
+                0 &&
+              currentPosition <=
+                1.25;
 
             const bullishCandles =
               pullbackCandles.filter(
                 c =>
-                  c.close > c.open
+                  c.close >
+                  c.open
               ).length;
 
             const bearishCandles =
               pullbackCandles.filter(
                 c =>
-                  c.close < c.open
+                  c.close <
+                  c.open
               ).length;
 
             const actualPullback =
               bullishCandles >= 1 ||
-              pullbackCandles.length <= 3;
+              pullbackCandles.length <=
+                3;
 
             if (
               controlled &&
@@ -2353,32 +2713,45 @@ export default {
             }
           }
 
-          if (bestCandidate) {
+          if (
+            bestCandidate
+          ) {
             return {
               present: true,
-              type: "BEARISH_PULLBACK",
+              type:
+                "BEARISH_PULLBACK",
               description:
                 "H1 shows a meaningful bearish impulse followed by a controlled upward pullback that has not broken the impulse origin.",
               details: {
                 impulseLow:
                   Number(
-                    bestCandidate.impulseLow.toFixed(5)
+                    bestCandidate.impulseLow.toFixed(
+                      5
+                    )
                   ),
                 originHigh:
                   Number(
-                    bestCandidate.originHigh.toFixed(5)
+                    bestCandidate.originHigh.toFixed(
+                      5
+                    )
                   ),
                 pullbackHigh:
                   Number(
-                    bestCandidate.pullbackHigh.toFixed(5)
+                    bestCandidate.pullbackHigh.toFixed(
+                      5
+                    )
                   ),
                 impulseSize:
                   Number(
-                    bestCandidate.impulseSize.toFixed(5)
+                    bestCandidate.impulseSize.toFixed(
+                      5
+                    )
                   ),
                 retracementSize:
                   Number(
-                    bestCandidate.retracementSize.toFixed(5)
+                    bestCandidate.retracementSize.toFixed(
+                      5
+                    )
                   ),
                 retracementPercent:
                   Number(
@@ -2418,19 +2791,25 @@ export default {
 
         for (
           let i = start;
-          i < completed.length;
+          i <
+            completed.length;
           i++
         ) {
           const candle =
             completed[i];
 
-          if (direction === "BULLISH") {
+          if (
+            direction ===
+            "BULLISH"
+          ) {
             const priorHighs =
               swings.highs.filter(
                 s => s.index < i
               );
 
-            if (!priorHighs.length) {
+            if (
+              !priorHighs.length
+            ) {
               continue;
             }
 
@@ -2445,8 +2824,10 @@ export default {
             ) {
               event = {
                 confirmed: true,
-                direction: "BULLISH",
-                level: level.price,
+                direction:
+                  "BULLISH",
+                level:
+                  level.price,
                 datetime:
                   candle.datetime,
                 close:
@@ -2456,13 +2837,18 @@ export default {
             }
           }
 
-          if (direction === "BEARISH") {
+          if (
+            direction ===
+            "BEARISH"
+          ) {
             const priorLows =
               swings.lows.filter(
                 s => s.index < i
               );
 
-            if (!priorLows.length) {
+            if (
+              !priorLows.length
+            ) {
               continue;
             }
 
@@ -2477,8 +2863,10 @@ export default {
             ) {
               event = {
                 confirmed: true,
-                direction: "BEARISH",
-                level: level.price,
+                direction:
+                  "BEARISH",
+                level:
+                  level.price,
                 datetime:
                   candle.datetime,
                 close:
@@ -2492,7 +2880,8 @@ export default {
         return (
           event || {
             confirmed: false,
-            direction: "NONE",
+            direction:
+              "NONE",
             level: null,
             datetime: null,
             close: null,
@@ -2514,7 +2903,8 @@ export default {
         ) {
           return Response.json({
             success: false,
-            provider: "Twelve Data",
+            provider:
+              "Twelve Data",
             pair: symbol,
             error:
               "Not enough H4/H1 candles for technical confirmation.",
@@ -2533,10 +2923,14 @@ export default {
           h4Candles.slice(0, -1);
 
         const h4Swings =
-          findSwings(h4Analysis);
+          findSwings(
+            h4Analysis
+          );
 
         const h4Classified =
-          classifySwings(h4Swings);
+          classifySwings(
+            h4Swings
+          );
 
         const h4Structure =
           determineStructure(
@@ -2589,10 +2983,14 @@ export default {
           h1Candles.slice(0, -1);
 
         const h1Swings =
-          findSwings(h1Analysis);
+          findSwings(
+            h1Analysis
+          );
 
         const h1Classified =
-          classifySwings(h1Swings);
+          classifySwings(
+            h1Swings
+          );
 
         const h1Structure =
           determineStructure(
@@ -2608,18 +3006,21 @@ export default {
         // H4 CONTEXT
         // ========================================================
 
-        let context = "NEUTRAL";
+        let context =
+          "NEUTRAL";
 
         if (
           h4Structure ===
           "BULLISH"
         ) {
-          context = "BULLISH";
+          context =
+            "BULLISH";
         } else if (
           h4Structure ===
           "BEARISH"
         ) {
-          context = "BEARISH";
+          context =
+            "BEARISH";
         } else if (
           h4BOS.direction ===
           "BULLISH"
@@ -2635,9 +3036,13 @@ export default {
         }
 
         const direction =
-          context.includes("BULLISH")
+          context.includes(
+            "BULLISH"
+          )
             ? "BULLISH"
-            : context.includes("BEARISH")
+            : context.includes(
+                "BEARISH"
+              )
               ? "BEARISH"
               : "NONE";
 
@@ -2646,7 +3051,8 @@ export default {
         // ========================================================
 
         const h1Retracement =
-          direction === "NONE"
+          direction ===
+          "NONE"
             ? {
                 present: false,
                 type: "NONE",
@@ -2663,10 +3069,12 @@ export default {
         // ========================================================
 
         const h1BOS =
-          direction === "NONE"
+          direction ===
+          "NONE"
             ? {
                 confirmed: false,
-                direction: "NONE",
+                direction:
+                  "NONE",
                 level: null,
                 datetime: null,
                 close: null,
@@ -2679,85 +3087,224 @@ export default {
               );
 
         // ========================================================
-        // LOCATION GATE
+        // IMPROVED H4 LOCATION GATE
         // ========================================================
 
         const tolerance =
           h4AverageRange * 0.50;
 
-        let locationGate = false;
-        let locationType = "NONE";
-        let activeZone = null;
+        let locationGate =
+          false;
 
-        if (direction === "BULLISH") {
+        let locationType =
+          "NONE";
+
+        let activeZone =
+          null;
+
+        // A BOS older than this number of H4 candles
+        // is not treated as a continuation setup.
+        //
+        // 40 H4 candles is approximately 6-7 days.
+        const continuationLookback =
+          40;
+
+        const recentH4BOS =
+          h4BOS &&
+          h4BOS.direction ===
+            direction &&
+          h4BOS.index !== null &&
+          h4BOS.index >=
+            Math.max(
+              0,
+              h4Analysis.length -
+                continuationLookback
+            );
+
+        if (
+          direction ===
+          "BULLISH"
+        ) {
+          // ------------------------------------------------------
+          // 1. DEMAND
+          // ------------------------------------------------------
+
           const demand =
             h4Zones.demand
               .slice()
               .reverse()
-              .find(zone =>
-                nearZone(
-                  h4Latest.close,
-                  zone,
-                  tolerance
-                )
+              .find(
+                zone =>
+                  nearZone(
+                    h4Latest.close,
+                    zone,
+                    tolerance
+                  )
               );
 
           if (demand) {
-            locationGate = true;
-            locationType = "DEMAND";
-            activeZone = demand;
-          } else if (
+            locationGate =
+              true;
+
+            locationType =
+              "DEMAND";
+
+            activeZone =
+              demand;
+          }
+
+          // ------------------------------------------------------
+          // 2. SUPPORT
+          // ------------------------------------------------------
+
+          else if (
             h4Support &&
             Math.abs(
               h4Latest.close -
-              h4Support.price
-            ) <= tolerance
+                h4Support.price
+            ) <=
+              tolerance
           ) {
-            locationGate = true;
-            locationType = "SUPPORT";
+            locationGate =
+              true;
+
+            locationType =
+              "SUPPORT";
+
             activeZone = {
-              type: "SUPPORT",
+              type:
+                "SUPPORT",
               price:
                 h4Support.price,
               datetime:
                 h4Support.datetime
             };
           }
+
+          // ------------------------------------------------------
+          // 3. BULLISH CONTINUATION
+          // ------------------------------------------------------
+
+          else if (
+            recentH4BOS &&
+            h4Latest.close >
+              h4BOS.level &&
+            (
+              !h4Resistance ||
+              h4Latest.close <
+                h4Resistance.price -
+                  tolerance
+            )
+          ) {
+            locationGate =
+              true;
+
+            locationType =
+              "CONTINUATION";
+
+            activeZone = {
+              type:
+                "BULLISH_CONTINUATION",
+              brokenLevel:
+                h4BOS.level,
+              breakDatetime:
+                h4BOS.datetime,
+              breakClose:
+                h4BOS.close
+            };
+          }
         }
 
-        if (direction === "BEARISH") {
+        if (
+          direction ===
+          "BEARISH"
+        ) {
+          // ------------------------------------------------------
+          // 1. SUPPLY
+          // ------------------------------------------------------
+
           const supply =
             h4Zones.supply
               .slice()
               .reverse()
-              .find(zone =>
-                nearZone(
-                  h4Latest.close,
-                  zone,
-                  tolerance
-                )
+              .find(
+                zone =>
+                  nearZone(
+                    h4Latest.close,
+                    zone,
+                    tolerance
+                  )
               );
 
           if (supply) {
-            locationGate = true;
-            locationType = "SUPPLY";
-            activeZone = supply;
-          } else if (
+            locationGate =
+              true;
+
+            locationType =
+              "SUPPLY";
+
+            activeZone =
+              supply;
+          }
+
+          // ------------------------------------------------------
+          // 2. RESISTANCE
+          // ------------------------------------------------------
+
+          else if (
             h4Resistance &&
             Math.abs(
               h4Latest.close -
-              h4Resistance.price
-            ) <= tolerance
+                h4Resistance.price
+            ) <=
+              tolerance
           ) {
-            locationGate = true;
+            locationGate =
+              true;
+
             locationType =
               "RESISTANCE";
+
             activeZone = {
-              type: "RESISTANCE",
+              type:
+                "RESISTANCE",
               price:
                 h4Resistance.price,
               datetime:
                 h4Resistance.datetime
+            };
+          }
+
+          // ------------------------------------------------------
+          // 3. BEARISH CONTINUATION
+          // ------------------------------------------------------
+
+          else if (
+            recentH4BOS &&
+            h4Latest.close <
+              h4BOS.level &&
+            (
+              !h4Support ||
+              h4Latest.close >
+                h4Support.price +
+                  tolerance
+            )
+          ) {
+            locationGate =
+              true;
+
+            locationType =
+              "CONTINUATION";
+
+            activeZone = {
+              type:
+                "BEARISH_CONTINUATION",
+              brokenLevel:
+                h4BOS.level,
+              breakDatetime:
+                h4BOS.datetime,
+              breakClose:
+                h4BOS.close
             };
           }
         }
@@ -2767,17 +3314,20 @@ export default {
         // ========================================================
 
         const h4StructureGate =
-          direction !== "NONE";
+          direction !==
+          "NONE";
 
         const h1StructureGate =
-          direction === "BULLISH"
+          direction ===
+          "BULLISH"
             ? (
                 h1Structure ===
                   "BULLISH" ||
                 h1BOS.direction ===
                   "BULLISH"
               )
-            : direction === "BEARISH"
+            : direction ===
+                "BEARISH"
               ? (
                   h1Structure ===
                     "BEARISH" ||
@@ -2809,13 +3359,17 @@ export default {
           "NOT_CONFIRMED";
 
         let setupDirection =
-          direction === "BULLISH"
+          direction ===
+          "BULLISH"
             ? "BULLISH_SETUP"
-            : direction === "BEARISH"
+            : direction ===
+                "BEARISH"
               ? "BEARISH_SETUP"
               : "NONE";
 
-        if (technicalConfirmed) {
+        if (
+          technicalConfirmed
+        ) {
           technicalStatus =
             "TECHNICAL_CONFIRMED";
 
@@ -2829,7 +3383,9 @@ export default {
 
         const reasons = [];
 
-        if (!h4StructureGate) {
+        if (
+          !h4StructureGate
+        ) {
           reasons.push(
             "No valid H4 directional context."
           );
@@ -2839,9 +3395,11 @@ export default {
           );
         }
 
-        if (!locationGate) {
+        if (
+          !locationGate
+        ) {
           reasons.push(
-            "Price is not confirmed near a qualifying H4 supply/demand zone or nearby H4 support/resistance."
+            "Price is not confirmed near a qualifying H4 supply/demand zone, nearby H4 support/resistance, or a valid recent H4 continuation location."
           );
         } else {
           reasons.push(
@@ -2849,7 +3407,9 @@ export default {
           );
         }
 
-        if (!retracementGate) {
+        if (
+          !retracementGate
+        ) {
           reasons.push(
             "Required controlled H1 retracement/pullback is not detected."
           );
@@ -2859,7 +3419,9 @@ export default {
           );
         }
 
-        if (!h1StructureGate) {
+        if (
+          !h1StructureGate
+        ) {
           reasons.push(
             "H1 structure is not aligned with the H4 context."
           );
@@ -2879,7 +3441,9 @@ export default {
           );
         }
 
-        if (technicalConfirmed) {
+        if (
+          technicalConfirmed
+        ) {
           reasons.push(
             "All required technical gates are satisfied."
           );
@@ -2891,7 +3455,8 @@ export default {
 
         return Response.json({
           success: true,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           pair: symbol,
 
           technical_status:
@@ -2902,18 +3467,22 @@ export default {
 
           technical_value:
             technicalConfirmed
-              ? direction === "BULLISH"
+              ? direction ===
+                "BULLISH"
                 ? 2
                 : -2
               : 0,
 
           latest: {
-            h4: h4Latest,
-            h1: h1Latest
+            h4:
+              h4Latest,
+            h1:
+              h1Latest
           },
 
           h4: {
-            timeframe: "H4",
+            timeframe:
+              "H4",
 
             candle_count:
               h4Candles.length,
@@ -2926,9 +3495,13 @@ export default {
 
             swing_points: {
               highs:
-                h4Classified.highs.slice(-10),
+                h4Classified.highs.slice(
+                  -10
+                ),
               lows:
-                h4Classified.lows.slice(-10)
+                h4Classified.lows.slice(
+                  -10
+                )
             },
 
             break_of_structure:
@@ -2936,9 +3509,13 @@ export default {
 
             zones: {
               demand:
-                h4Zones.demand.slice(-5),
+                h4Zones.demand.slice(
+                  -5
+                ),
               supply:
-                h4Zones.supply.slice(-5)
+                h4Zones.supply.slice(
+                  -5
+                )
             },
 
             support:
@@ -2949,12 +3526,15 @@ export default {
 
             average_range:
               Number(
-                h4AverageRange.toFixed(5)
+                h4AverageRange.toFixed(
+                  5
+                )
               )
           },
 
           h1: {
-            timeframe: "H1",
+            timeframe:
+              "H1",
 
             candle_count:
               h1Candles.length,
@@ -2966,9 +3546,13 @@ export default {
 
             swing_points: {
               highs:
-                h1Classified.highs.slice(-10),
+                h1Classified.highs.slice(
+                  -10
+                ),
               lows:
-                h1Classified.lows.slice(-10)
+                h1Classified.lows.slice(
+                  -10
+                )
             },
 
             retracement:
@@ -2990,6 +3574,9 @@ export default {
 
             active_zone:
               activeZone,
+
+            recent_h4_bos:
+              recentH4BOS,
 
             h1_retracement:
               retracementGate,
@@ -3020,7 +3607,10 @@ export default {
               "BOS requires a completed candle close beyond the relevant swing level. A wick alone does not confirm BOS.",
 
             location:
-              "Price should be near a qualifying H4 supply/demand zone or nearby H4 support/resistance.",
+              "Location can be established by H4 supply/demand, nearby H4 support/resistance, or a recent H4 structure-break continuation that is not immediately running into opposing support/resistance.",
+
+            continuation:
+              "A continuation location requires a directional H4 BOS within the recent H4 lookback window, price remaining beyond the broken level, and sufficient distance from opposing H4 support/resistance.",
 
             retracement:
               "H1 retracement requires a meaningful directional impulse followed by a controlled pullback that does not destroy the impulse origin.",
@@ -3045,6 +3635,7 @@ export default {
             "H4 market structure",
             "H4 supply/demand",
             "H4 support/resistance",
+            "H4 continuation location",
             "H1 retracement",
             "H1 structure",
             "H1 BOS",
@@ -3056,9 +3647,11 @@ export default {
       } catch (error) {
         return Response.json({
           success: false,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           pair: symbol,
-          error: error.message
+          error:
+            error.message
         });
       }
     }
@@ -3066,37 +3659,48 @@ export default {
     // ============================================================
     // TWELVE DATA — TECHNICAL DATA TEST
     // ============================================================
-    if (url.pathname === "/api/technical-data-test") {
+    if (
+      url.pathname ===
+      "/api/technical-data-test"
+    ) {
       if (!env.TWELVE_DATA_API_KEY) {
         return Response.json({
           success: false,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           error:
             "TWELVE_DATA_API_KEY is not configured."
         });
       }
 
       const interval =
-        url.searchParams.get("interval") ||
-        "1h";
+        url.searchParams.get(
+          "interval"
+        ) || "1h";
 
       if (
-        !["1h", "4h"].includes(interval)
+        !["1h", "4h"].includes(
+          interval
+        )
       ) {
         return Response.json({
           success: false,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           error:
             "Interval must be 1h or 4h."
         });
       }
 
-      const outputsize = 100;
+      const outputsize =
+        100;
 
       const apiUrl =
         `https://api.twelvedata.com/time_series` +
         `?symbol=EUR%2FUSD` +
-        `&interval=${encodeURIComponent(interval)}` +
+        `&interval=${encodeURIComponent(
+          interval
+        )}` +
         `&outputsize=${outputsize}` +
         `&timezone=UTC` +
         `&apikey=${encodeURIComponent(
@@ -3113,7 +3717,8 @@ export default {
         if (!response.ok) {
           return Response.json({
             success: false,
-            provider: "Twelve Data",
+            provider:
+              "Twelve Data",
             interval,
             error:
               `HTTP ${response.status}`,
@@ -3121,10 +3726,14 @@ export default {
           });
         }
 
-        if (data.status === "error") {
+        if (
+          data.status ===
+          "error"
+        ) {
           return Response.json({
             success: false,
-            provider: "Twelve Data",
+            provider:
+              "Twelve Data",
             interval,
             error:
               data.message ||
@@ -3136,13 +3745,17 @@ export default {
 
         return Response.json({
           success: true,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           pair: "EUR/USD",
           interval,
           candles:
             data.values || [],
           candle_count:
-            (data.values || []).length,
+            (
+              data.values ||
+              []
+            ).length,
           meta:
             data.meta || null
         });
@@ -3150,9 +3763,11 @@ export default {
       } catch (error) {
         return Response.json({
           success: false,
-          provider: "Twelve Data",
+          provider:
+            "Twelve Data",
           interval,
-          error: error.message
+          error:
+            error.message
         });
       }
     }
