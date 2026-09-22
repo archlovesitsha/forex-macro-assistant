@@ -3102,12 +3102,22 @@ export default {
         let activeZone =
           null;
 
-        // A BOS older than this number of H4 candles
+        // --------------------------------------------------------
+        // CONTINUATION PARAMETERS
+        // --------------------------------------------------------
+
+        // A BOS older than this number of completed H4 candles
         // is not treated as a continuation setup.
-        //
-        // 40 H4 candles is approximately 6-7 days.
         const continuationLookback =
           40;
+
+        // Do not chase price after it has travelled too far
+        // from the H4 BOS.
+        //
+        // Maximum continuation distance:
+        // 4 average H4 ranges.
+        const maxContinuationDistance =
+          h4AverageRange * 4;
 
         const recentH4BOS =
           h4BOS &&
@@ -3121,14 +3131,54 @@ export default {
                 continuationLookback
             );
 
+        // --------------------------------------------------------
+        // CONTINUATION DIAGNOSTICS
+        // --------------------------------------------------------
+
+        let continuationDiagnostics = {
+          eligible: false,
+          reason:
+            "No valid directional H4 BOS continuation candidate.",
+          brokenLevel:
+            h4BOS &&
+            h4BOS.level !== null
+              ? h4BOS.level
+              : null,
+          currentPrice:
+            h4Latest.close,
+          distanceFromBreak: null,
+          maxContinuationDistance:
+            Number(
+              maxContinuationDistance.toFixed(
+                5
+              )
+            ),
+          distanceInAverageRanges:
+            null,
+          opposingLevel: null,
+          opposingDistance: null,
+          opposingDistanceInAverageRanges:
+            null
+        };
+
+        // --------------------------------------------------------
+        // CHECK WHETHER A RECENT H4 BOS EXISTS
+        // --------------------------------------------------------
+
+        if (!recentH4BOS) {
+          continuationDiagnostics.reason =
+            "No recent H4 BOS in the continuation lookback window.";
+        }
+
+        // ========================================================
+        // BULLISH LOCATION
+        // ========================================================
+
         if (
           direction ===
           "BULLISH"
         ) {
-          // ------------------------------------------------------
           // 1. DEMAND
-          // ------------------------------------------------------
-
           const demand =
             h4Zones.demand
               .slice()
@@ -3153,10 +3203,7 @@ export default {
               demand;
           }
 
-          // ------------------------------------------------------
           // 2. SUPPORT
-          // ------------------------------------------------------
-
           else if (
             h4Support &&
             Math.abs(
@@ -3181,48 +3228,163 @@ export default {
             };
           }
 
-          // ------------------------------------------------------
           // 3. BULLISH CONTINUATION
-          // ------------------------------------------------------
-
           else if (
-            recentH4BOS &&
-            h4Latest.close >
-              h4BOS.level &&
-            (
-              !h4Resistance ||
-              h4Latest.close <
-                h4Resistance.price -
-                  tolerance
-            )
+            recentH4BOS
           ) {
-            locationGate =
-              true;
+            const distanceFromBreak =
+              h4Latest.close -
+              h4BOS.level;
 
-            locationType =
-              "CONTINUATION";
+            const distanceInAverageRanges =
+              h4AverageRange > 0
+                ? distanceFromBreak /
+                  h4AverageRange
+                : null;
 
-            activeZone = {
-              type:
-                "BULLISH_CONTINUATION",
+            const opposingLevel =
+              h4Resistance
+                ? h4Resistance.price
+                : null;
+
+            const opposingDistance =
+              opposingLevel !== null
+                ? opposingLevel -
+                  h4Latest.close
+                : null;
+
+            const opposingDistanceInAverageRanges =
+              opposingDistance !== null &&
+              h4AverageRange > 0
+                ? opposingDistance /
+                  h4AverageRange
+                : null;
+
+            continuationDiagnostics = {
+              eligible: false,
+
+              reason:
+                "Continuation candidate evaluated.",
+
               brokenLevel:
                 h4BOS.level,
-              breakDatetime:
-                h4BOS.datetime,
-              breakClose:
-                h4BOS.close
+
+              currentPrice:
+                h4Latest.close,
+
+              distanceFromBreak:
+                Number(
+                  distanceFromBreak.toFixed(
+                    5
+                  )
+                ),
+
+              maxContinuationDistance:
+                Number(
+                  maxContinuationDistance.toFixed(
+                    5
+                  )
+                ),
+
+              distanceInAverageRanges:
+                distanceInAverageRanges !==
+                null
+                  ? Number(
+                      distanceInAverageRanges.toFixed(
+                        2
+                      )
+                    )
+                  : null,
+
+              opposingLevel:
+                opposingLevel,
+
+              opposingDistance:
+                opposingDistance !== null
+                  ? Number(
+                      opposingDistance.toFixed(
+                        5
+                      )
+                    )
+                  : null,
+
+              opposingDistanceInAverageRanges:
+                opposingDistanceInAverageRanges !==
+                null
+                  ? Number(
+                      opposingDistanceInAverageRanges.toFixed(
+                        2
+                      )
+                    )
+                  : null
             };
+
+            if (
+              distanceFromBreak <=
+              0
+            ) {
+              continuationDiagnostics.reason =
+                "Price has not closed above the bullish H4 BOS level.";
+            } else if (
+              distanceFromBreak >
+              maxContinuationDistance
+            ) {
+              continuationDiagnostics.reason =
+                "Price has travelled too far beyond the bullish H4 BOS; continuation would risk chasing the move.";
+            } else if (
+              h4Resistance &&
+              h4Latest.close >=
+                h4Resistance.price -
+                  tolerance
+            ) {
+              continuationDiagnostics.reason =
+                "Price is too close to opposing H4 resistance.";
+            } else {
+              continuationDiagnostics.eligible =
+                true;
+
+              continuationDiagnostics.reason =
+                "Bullish H4 continuation remains within the allowed distance from BOS and is not too close to opposing resistance.";
+
+              locationGate =
+                true;
+
+              locationType =
+                "CONTINUATION";
+
+              activeZone = {
+                type:
+                  "BULLISH_CONTINUATION",
+
+                brokenLevel:
+                  h4BOS.level,
+
+                breakDatetime:
+                  h4BOS.datetime,
+
+                breakClose:
+                  h4BOS.close,
+
+                distanceFromBreak:
+                  Number(
+                    distanceFromBreak.toFixed(
+                      5
+                    )
+                  )
+              };
+            }
           }
         }
+
+        // ========================================================
+        // BEARISH LOCATION
+        // ========================================================
 
         if (
           direction ===
           "BEARISH"
         ) {
-          // ------------------------------------------------------
           // 1. SUPPLY
-          // ------------------------------------------------------
-
           const supply =
             h4Zones.supply
               .slice()
@@ -3247,10 +3409,7 @@ export default {
               supply;
           }
 
-          // ------------------------------------------------------
           // 2. RESISTANCE
-          // ------------------------------------------------------
-
           else if (
             h4Resistance &&
             Math.abs(
@@ -3275,37 +3434,151 @@ export default {
             };
           }
 
-          // ------------------------------------------------------
           // 3. BEARISH CONTINUATION
-          // ------------------------------------------------------
-
           else if (
-            recentH4BOS &&
-            h4Latest.close <
-              h4BOS.level &&
-            (
-              !h4Support ||
-              h4Latest.close >
-                h4Support.price +
-                  tolerance
-            )
+            recentH4BOS
           ) {
-            locationGate =
-              true;
+            const distanceFromBreak =
+              h4BOS.level -
+              h4Latest.close;
 
-            locationType =
-              "CONTINUATION";
+            const distanceInAverageRanges =
+              h4AverageRange > 0
+                ? distanceFromBreak /
+                  h4AverageRange
+                : null;
 
-            activeZone = {
-              type:
-                "BEARISH_CONTINUATION",
+            const opposingLevel =
+              h4Support
+                ? h4Support.price
+                : null;
+
+            const opposingDistance =
+              opposingLevel !== null
+                ? h4Latest.close -
+                  opposingLevel
+                : null;
+
+            const opposingDistanceInAverageRanges =
+              opposingDistance !== null &&
+              h4AverageRange > 0
+                ? opposingDistance /
+                  h4AverageRange
+                : null;
+
+            continuationDiagnostics = {
+              eligible: false,
+
+              reason:
+                "Continuation candidate evaluated.",
+
               brokenLevel:
                 h4BOS.level,
-              breakDatetime:
-                h4BOS.datetime,
-              breakClose:
-                h4BOS.close
+
+              currentPrice:
+                h4Latest.close,
+
+              distanceFromBreak:
+                Number(
+                  distanceFromBreak.toFixed(
+                    5
+                  )
+                ),
+
+              maxContinuationDistance:
+                Number(
+                  maxContinuationDistance.toFixed(
+                    5
+                  )
+                ),
+
+              distanceInAverageRanges:
+                distanceInAverageRanges !==
+                null
+                  ? Number(
+                      distanceInAverageRanges.toFixed(
+                        2
+                      )
+                    )
+                  : null,
+
+              opposingLevel:
+                opposingLevel,
+
+              opposingDistance:
+                opposingDistance !== null
+                  ? Number(
+                      opposingDistance.toFixed(
+                        5
+                      )
+                    )
+                  : null,
+
+              opposingDistanceInAverageRanges:
+                opposingDistanceInAverageRanges !==
+                null
+                  ? Number(
+                      opposingDistanceInAverageRanges.toFixed(
+                        2
+                      )
+                    )
+                  : null
             };
+
+            if (
+              distanceFromBreak <=
+              0
+            ) {
+              continuationDiagnostics.reason =
+                "Price has not closed below the bearish H4 BOS level.";
+            } else if (
+              distanceFromBreak >
+              maxContinuationDistance
+            ) {
+              continuationDiagnostics.reason =
+                "Price has travelled too far beyond the bearish H4 BOS; continuation would risk chasing the move.";
+            } else if (
+              h4Support &&
+              h4Latest.close <=
+                h4Support.price +
+                  tolerance
+            ) {
+              continuationDiagnostics.reason =
+                "Price is too close to opposing H4 support.";
+            } else {
+              continuationDiagnostics.eligible =
+                true;
+
+              continuationDiagnostics.reason =
+                "Bearish H4 continuation remains within the allowed distance from BOS and is not too close to opposing support.";
+
+              locationGate =
+                true;
+
+              locationType =
+                "CONTINUATION";
+
+              activeZone = {
+                type:
+                  "BEARISH_CONTINUATION",
+
+                brokenLevel:
+                  h4BOS.level,
+
+                breakDatetime:
+                  h4BOS.datetime,
+
+                breakClose:
+                  h4BOS.close,
+
+                distanceFromBreak:
+                  Number(
+                    distanceFromBreak.toFixed(
+                      5
+                    )
+                  )
+              };
+            }
           }
         }
 
@@ -3399,7 +3672,7 @@ export default {
           !locationGate
         ) {
           reasons.push(
-            "Price is not confirmed near a qualifying H4 supply/demand zone, nearby H4 support/resistance, or a valid recent H4 continuation location."
+            `H4 location not confirmed: ${continuationDiagnostics.reason}`
           );
         } else {
           reasons.push(
@@ -3578,6 +3851,9 @@ export default {
             recent_h4_bos:
               recentH4BOS,
 
+            continuation_diagnostics:
+              continuationDiagnostics,
+
             h1_retracement:
               retracementGate,
 
@@ -3610,7 +3886,7 @@ export default {
               "Location can be established by H4 supply/demand, nearby H4 support/resistance, or a recent H4 structure-break continuation that is not immediately running into opposing support/resistance.",
 
             continuation:
-              "A continuation location requires a directional H4 BOS within the recent H4 lookback window, price remaining beyond the broken level, and sufficient distance from opposing H4 support/resistance.",
+              "A continuation location requires a recent directional H4 BOS, price remaining beyond the broken level, price remaining within a maximum continuation distance of 4 average H4 ranges, and sufficient distance from opposing H4 support/resistance. The purpose is to avoid chasing an already extended move.",
 
             retracement:
               "H1 retracement requires a meaningful directional impulse followed by a controlled pullback that does not destroy the impulse origin.",
