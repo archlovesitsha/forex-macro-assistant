@@ -10,10 +10,6 @@ const state = {
 
 const $ = x => document.getElementById(x);
 
-// ============================================================
-// PAIR LIST
-// ============================================================
-
 for (const a of C) {
   for (const b of C) {
     if (a !== b) {
@@ -24,10 +20,6 @@ for (const a of C) {
     }
   }
 }
-
-// ============================================================
-// MACRO DISPLAY
-// ============================================================
 
 function renderMacro() {
   $("currencies").innerHTML = C.map(c => `
@@ -67,10 +59,6 @@ function renderMacro() {
   }).join("");
 }
 
-// ============================================================
-// API HELPER
-// ============================================================
-
 async function api(url) {
   const r = await fetch(url);
 
@@ -83,15 +71,7 @@ async function api(url) {
   return r.json();
 }
 
-// ============================================================
-// LOAD REAL MACRO DATA
-// ============================================================
-
 async function loadMacro(b, q) {
-
-  // At this stage our validated macro backend is
-  // specifically USD/EUR.
-
   if (
     !(
       (b === "USD" && q === "EUR") ||
@@ -121,11 +101,17 @@ async function loadMacro(b, q) {
     };
   }
 
+  /*
+    FIX:
+    The backend returns the macro score inside
+    scores.total, not directly as score.
+  */
+
   const usdScore =
-    Number(usd.score ?? 0);
+    Number(usd.scores?.total ?? 0);
 
   const eurScore =
-    Number(eur.score ?? 0);
+    Number(eur.scores?.total ?? 0);
 
   const baseScore =
     b === "USD"
@@ -148,15 +134,7 @@ async function loadMacro(b, q) {
   };
 }
 
-// ============================================================
-// LOAD PRICE / FUNDAMENTAL DIVERGENCE
-// ============================================================
-
 async function loadDivergence(b, q) {
-
-  // The current validated divergence endpoint
-  // is EUR/USD.
-
   if (
     !(
       (b === "EUR" && q === "USD") ||
@@ -195,15 +173,7 @@ async function loadDivergence(b, q) {
   };
 }
 
-// ============================================================
-// LOAD REAL TECHNICAL CONFIRMATION
-// ============================================================
-
 async function loadTechnical(b, q) {
-
-  // The technical confirmation engine is currently
-  // validated for EUR/USD.
-
   if (b !== "EUR" || q !== "USD") {
     return {
       available: false,
@@ -257,23 +227,14 @@ async function loadTechnical(b, q) {
   };
 }
 
-// ============================================================
-// FINAL RULE-BASED DECISION
-// ============================================================
-
 function buildDecision(
   pair,
   macro,
   divergence,
   technical
 ) {
-
   const [b, q] =
     pair.split("/");
-
-  // ----------------------------------------------------------
-  // DATA AVAILABILITY
-  // ----------------------------------------------------------
 
   if (!macro.available) {
     return {
@@ -310,25 +271,6 @@ function buildDecision(
   const differential =
     macro.differential;
 
-  // ----------------------------------------------------------
-  // DIVERGENCE-FIRST FRAMEWORK
-  // ----------------------------------------------------------
-  //
-  // We do NOT require the fundamental differential
-  // itself to point in the same direction as the trade.
-  //
-  // Instead:
-  //
-  // Fundamental view
-  //       ↓
-  // Price divergence
-  //       ↓
-  // Technical reversal confirmation
-  //       ↓
-  // Action
-  //
-  // This follows the strategy we designed.
-
   if (!divergence.present) {
     return {
       action: "PASS",
@@ -350,10 +292,6 @@ function buildDecision(
         technical.value
     };
   }
-
-  // ----------------------------------------------------------
-  // CONFIRMED DIRECTION
-  // ----------------------------------------------------------
 
   if (
     technical.direction ===
@@ -392,10 +330,6 @@ function buildDecision(
   };
 }
 
-// ============================================================
-// DISPLAY DECISION
-// ============================================================
-
 function renderDecision(
   pair,
   macro,
@@ -403,7 +337,6 @@ function renderDecision(
   technical,
   decision
 ) {
-
   const [b, q] =
     pair.split("/");
 
@@ -445,19 +378,16 @@ function renderDecision(
         ? "N/A"
         : macro.baseScore
     }`,
-
     `Quote ${q}: ${
       macro.quoteScore === null
         ? "N/A"
         : macro.quoteScore
     }`,
-
     `Relative differential: ${
       differential === null
         ? "N/A"
         : differential
     }`,
-
     `Price/fundamental divergence: ${
       divergence.available
         ? divergence.present
@@ -465,7 +395,6 @@ function renderDecision(
           : "not detected"
         : "data unavailable"
     }`,
-
     `Technical confirmation: ${
       technical.available
         ? technical.confirmed
@@ -473,7 +402,6 @@ function renderDecision(
           : "NOT CONFIRMED"
         : "data unavailable"
     }`,
-
     "Action is rule-based decision support, not a guaranteed forecast."
   ]
     .map(x => `<li>${x}</li>`)
@@ -481,40 +409,30 @@ function renderDecision(
 
   $("plan").innerHTML = `
     <div class="setup">
-
       <div>
         <b>Direction</b><br>
         ${decision.action}
       </div>
-
       <div>
         <b>Invalidation</b><br>
         Set beyond the technical structure
         that invalidates the thesis.
       </div>
-
       <div>
         <b>Entry</b><br>
         Wait for the confirmed H1 candle-close
         structure break after the H4 setup.
       </div>
-
       <div>
         <b>Target</b><br>
         Use the next meaningful higher-timeframe
         level and maintain defined risk.
       </div>
-
     </div>
   `;
 }
 
-// ============================================================
-// MAIN ANALYSIS
-// ============================================================
-
 async function analyse() {
-
   const pair =
     $("pair").value;
 
@@ -528,7 +446,6 @@ async function analyse() {
     "Loading macro, divergence and technical data...";
 
   try {
-
     const [
       macro,
       divergence,
@@ -572,9 +489,7 @@ async function analyse() {
           technical.raw.latest.h1.close
         }`;
     }
-
   } catch (e) {
-
     console.error(e);
 
     $("action").textContent =
@@ -600,17 +515,11 @@ async function analyse() {
   }
 }
 
-// ============================================================
-// REFRESH LIVE DATA
-// ============================================================
-
 async function refresh() {
-
   const [b, q] =
     $("pair").value.split("/");
 
   try {
-
     const fx =
       await api(
         `/api/fx/rate?from=${b}&to=${q}`
@@ -619,14 +528,12 @@ async function refresh() {
     if (
       fx.configured
     ) {
-
       const x =
         fx.data[
           "Realtime Currency Exchange Rate"
         ];
 
       if (x) {
-
         const price =
           +x["5. Exchange Rate"];
 
@@ -645,18 +552,14 @@ async function refresh() {
 
       $("providerStatus").textContent =
         "Alpha Vantage connection detected.";
-
     } else {
-
       $("dataStatus").textContent =
         "FX provider not configured; analysis data may be limited.";
 
       $("providerStatus").textContent =
         "FX provider is not configured.";
     }
-
   } catch (e) {
-
     $("dataStatus").textContent =
       "Live FX rate unavailable; analysis will use available backend data.";
 
@@ -667,16 +570,10 @@ async function refresh() {
   await analyse();
 }
 
-// ============================================================
-// NAVIGATION
-// ============================================================
-
 document
   .querySelectorAll("nav button")
   .forEach(b => {
-
     b.onclick = () => {
-
       document
         .querySelectorAll("nav button")
         .forEach(x =>
@@ -711,10 +608,6 @@ document
     };
   });
 
-// ============================================================
-// BUTTONS
-// ============================================================
-
 $("scan").onclick =
   analyse;
 
@@ -724,12 +617,7 @@ $("refresh").onclick =
 $("pair").onchange =
   refresh;
 
-// ============================================================
-// RISK CALCULATOR
-// ============================================================
-
 $("calc").onclick = () => {
-
   const balance =
     +$("bal").value;
 
@@ -767,12 +655,7 @@ $("calc").onclick = () => {
     `Lot size ${n.toFixed(2)} lots`;
 };
 
-// ============================================================
-// JOURNAL
-// ============================================================
-
 function logs() {
-
   const a =
     JSON.parse(
       localStorage.getItem(
@@ -791,7 +674,6 @@ function logs() {
 }
 
 $("save").onclick = () => {
-
   let a =
     JSON.parse(
       localStorage.getItem(
@@ -817,10 +699,6 @@ $("save").onclick = () => {
   logs();
 };
 
-// ============================================================
-// SERVICE WORKER
-// ============================================================
-
 if (
   "serviceWorker" in navigator
 ) {
@@ -829,14 +707,7 @@ if (
     .catch(() => {});
 }
 
-// ============================================================
-// INITIAL LOAD
-// ============================================================
-
 renderMacro();
-
 analyse();
-
 logs();
-
 refresh();
