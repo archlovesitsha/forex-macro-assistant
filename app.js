@@ -330,6 +330,86 @@ function buildDecision(
   };
 }
 
+function getH4Context(t) {
+  const h4 = t?.h4 || {};
+  const structure =
+    h4.market_structure || {};
+
+  if (structure.context) {
+    return structure.context;
+  }
+
+  if (
+    structure.direction &&
+    structure.direction !== "NEUTRAL"
+  ) {
+    return structure.direction;
+  }
+
+  const reasons =
+    Array.isArray(t?.reasons)
+      ? t.reasons
+      : [];
+
+  const contextReason =
+    reasons.find(x =>
+      x.startsWith("H4 context:")
+    );
+
+  if (contextReason) {
+    return contextReason
+      .replace("H4 context:", "")
+      .trim();
+  }
+
+  return structure.direction || "N/A";
+}
+
+function getH1Alignment(t) {
+  const h4Context =
+    getH4Context(t);
+
+  const h1Direction =
+    t?.h1?.market_structure
+      ?.direction || "N/A";
+
+  const h4Bearish =
+    String(h4Context)
+      .toUpperCase()
+      .includes("BEARISH");
+
+  const h4Bullish =
+    String(h4Context)
+      .toUpperCase()
+      .includes("BULLISH");
+
+  const h1Bearish =
+    String(h1Direction)
+      .toUpperCase()
+      .includes("BEARISH");
+
+  const h1Bullish =
+    String(h1Direction)
+      .toUpperCase()
+      .includes("BULLISH");
+
+  if (
+    (h4Bearish && h1Bearish) ||
+    (h4Bullish && h1Bullish)
+  ) {
+    return "ALIGNED";
+  }
+
+  if (
+    (h4Bearish && h1Bullish) ||
+    (h4Bullish && h1Bearish)
+  ) {
+    return "CONFLICT";
+  }
+
+  return "UNCONFIRMED";
+}
+
 function renderDecision(
   pair,
   macro,
@@ -372,91 +452,7 @@ function renderDecision(
         }/3`
       : "Technical N/A";
 
-  let technicalDetails = "";
-
-  if (
-    technical.available &&
-    technical.raw
-  ) {
-    const t = technical.raw;
-
-    const gates =
-      t.gates || {};
-
-    const h4 =
-      t.h4 || {};
-
-    const h1 =
-      t.h1 || {};
-
-    const continuation =
-      gates.continuation_diagnostics || {};
-
-    const reasons =
-      Array.isArray(t.reasons)
-        ? t.reasons
-        : [];
-
-    technicalDetails = `
-      <li><strong>Technical direction:</strong>
-        ${t.direction || "N/A"}
-      </li>
-
-      <li><strong>H4 structure:</strong>
-        ${gateSymbol(gates.h4_structure)}
-        ${h4.market_structure?.direction || "N/A"}
-      </li>
-
-      <li><strong>H4 location:</strong>
-        ${gateSymbol(gates.h4_location)}
-        ${gates.h4_location_type || "NONE"}
-      </li>
-
-      <li><strong>Recent H4 BOS:</strong>
-        ${gateSymbol(gates.recent_h4_bos)}
-        ${h4.break_of_structure?.direction || "N/A"}
-      </li>
-
-      <li><strong>H1 retracement:</strong>
-        ${gateSymbol(gates.h1_retracement)}
-        ${h1.retracement?.type || "NONE"}
-      </li>
-
-      <li><strong>H1 structure:</strong>
-        ${gateSymbol(gates.h1_structure)}
-        ${h1.market_structure?.direction || "N/A"}
-      </li>
-
-      <li><strong>H1 BOS:</strong>
-        ${gateSymbol(gates.h1_bos)}
-        ${h1.break_of_structure?.confirmed
-          ? h1.break_of_structure.direction
-          : "NOT CONFIRMED"}
-      </li>
-    `;
-
-    if (
-      continuation.reason
-    ) {
-      technicalDetails += `
-        <li><strong>H4 location diagnostic:</strong>
-          ${continuation.reason}
-        </li>
-      `;
-    }
-
-    if (
-      reasons.length
-    ) {
-      technicalDetails += `
-        <li><strong>Technical reasoning:</strong>
-          ${reasons.join(" ")}
-        </li>
-      `;
-    }
-  }
-
-  $("why").innerHTML = [
+  const whyItems = [
     `Base ${b}: ${
       macro.baseScore === null
         ? "N/A"
@@ -481,22 +477,122 @@ function renderDecision(
           ? "present"
           : "not detected"
         : "data unavailable"
-    }`,
+    }`
+  ];
 
-    technicalDetails,
+  if (
+    technical.available &&
+    technical.raw
+  ) {
+    const t =
+      technical.raw;
 
-    `Technical confirmation: ${
-      technical.available
-        ? technical.confirmed
-          ? "CONFIRMED"
-          : "NOT CONFIRMED"
-        : "data unavailable"
-    }`,
+    const gates =
+      t.gates || {};
 
-    "Action is rule-based decision support, not a guaranteed forecast."
-  ]
-    .map(x => `<li>${x}</li>`)
-    .join("");
+    const h4 =
+      t.h4 || {};
+
+    const h1 =
+      t.h1 || {};
+
+    const continuation =
+      gates.continuation_diagnostics || {};
+
+    const reasons =
+      Array.isArray(t.reasons)
+        ? t.reasons
+        : [];
+
+    const h4Context =
+      getH4Context(t);
+
+    const h1Alignment =
+      getH1Alignment(t);
+
+    let alignmentText =
+      h1Alignment;
+
+    if (
+      h1Alignment ===
+      "CONFLICT"
+    ) {
+      alignmentText =
+        "CONFLICT — H1 structure does not match H4 context";
+    }
+
+    whyItems.push(
+      `<strong>Technical direction:</strong>
+       ${t.direction || "N/A"}`,
+
+      `<strong>H4 context:</strong>
+       ${gateSymbol(gates.h4_structure)}
+       ${h4Context}`,
+
+      `<strong>H4 location:</strong>
+       ${gateSymbol(gates.h4_location)}
+       ${gates.h4_location_type || "NONE"}`,
+
+      `<strong>Recent H4 BOS:</strong>
+       ${gateSymbol(gates.recent_h4_bos)}
+       ${h4.break_of_structure?.direction || "N/A"}`,
+
+      `<strong>H1 retracement:</strong>
+       ${gateSymbol(gates.h1_retracement)}
+       ${h1.retracement?.type || "NONE"}`,
+
+      `<strong>H1 structure:</strong>
+       ${gateSymbol(gates.h1_structure)}
+       ${h1.market_structure?.direction || "N/A"}`,
+
+      `<strong>H4/H1 alignment:</strong>
+       ${alignmentText}`,
+
+      `<strong>H1 BOS:</strong>
+       ${gateSymbol(gates.h1_bos)}
+       ${
+         h1.break_of_structure?.confirmed
+           ? h1.break_of_structure.direction
+           : "NOT CONFIRMED"
+       }`
+    );
+
+    if (
+      continuation.reason
+    ) {
+      whyItems.push(
+        `<strong>H4 location diagnostic:</strong>
+         ${continuation.reason}`
+      );
+    }
+
+    if (
+      reasons.length
+    ) {
+      whyItems.push(
+        `<strong>Technical reasoning:</strong>
+         ${reasons.join(" ")}`
+      );
+    }
+  }
+
+  whyItems.push(
+    `<strong>Technical confirmation:</strong>
+     ${
+       technical.available
+         ? technical.confirmed
+           ? "CONFIRMED"
+           : "NOT CONFIRMED"
+         : "data unavailable"
+     }`,
+
+    `Action is rule-based decision support, not a guaranteed forecast.`
+  );
+
+  $("why").innerHTML =
+    whyItems
+      .map(x => `<li>${x}</li>`)
+      .join("");
 
   $("plan").innerHTML = `
     <div class="setup">
