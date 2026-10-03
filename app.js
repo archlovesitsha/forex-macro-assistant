@@ -101,12 +101,6 @@ async function loadMacro(b, q) {
     };
   }
 
-  /*
-    FIX:
-    The backend returns the macro score inside
-    scores.total, not directly as score.
-  */
-
   const usdScore =
     Number(usd.scores?.total ?? 0);
 
@@ -225,6 +219,12 @@ async function loadTechnical(b, q) {
     value,
     raw: result
   };
+}
+
+function gateSymbol(value) {
+  return value
+    ? "✅"
+    : "❌";
 }
 
 function buildDecision(
@@ -372,22 +372,109 @@ function renderDecision(
         }/3`
       : "Technical N/A";
 
+  let technicalDetails = "";
+
+  if (
+    technical.available &&
+    technical.raw
+  ) {
+    const t = technical.raw;
+
+    const gates =
+      t.gates || {};
+
+    const h4 =
+      t.h4 || {};
+
+    const h1 =
+      t.h1 || {};
+
+    const continuation =
+      gates.continuation_diagnostics || {};
+
+    const reasons =
+      Array.isArray(t.reasons)
+        ? t.reasons
+        : [];
+
+    technicalDetails = `
+      <li><strong>Technical direction:</strong>
+        ${t.direction || "N/A"}
+      </li>
+
+      <li><strong>H4 structure:</strong>
+        ${gateSymbol(gates.h4_structure)}
+        ${h4.market_structure?.direction || "N/A"}
+      </li>
+
+      <li><strong>H4 location:</strong>
+        ${gateSymbol(gates.h4_location)}
+        ${gates.h4_location_type || "NONE"}
+      </li>
+
+      <li><strong>Recent H4 BOS:</strong>
+        ${gateSymbol(gates.recent_h4_bos)}
+        ${h4.break_of_structure?.direction || "N/A"}
+      </li>
+
+      <li><strong>H1 retracement:</strong>
+        ${gateSymbol(gates.h1_retracement)}
+        ${h1.retracement?.type || "NONE"}
+      </li>
+
+      <li><strong>H1 structure:</strong>
+        ${gateSymbol(gates.h1_structure)}
+        ${h1.market_structure?.direction || "N/A"}
+      </li>
+
+      <li><strong>H1 BOS:</strong>
+        ${gateSymbol(gates.h1_bos)}
+        ${h1.break_of_structure?.confirmed
+          ? h1.break_of_structure.direction
+          : "NOT CONFIRMED"}
+      </li>
+    `;
+
+    if (
+      continuation.reason
+    ) {
+      technicalDetails += `
+        <li><strong>H4 location diagnostic:</strong>
+          ${continuation.reason}
+        </li>
+      `;
+    }
+
+    if (
+      reasons.length
+    ) {
+      technicalDetails += `
+        <li><strong>Technical reasoning:</strong>
+          ${reasons.join(" ")}
+        </li>
+      `;
+    }
+  }
+
   $("why").innerHTML = [
     `Base ${b}: ${
       macro.baseScore === null
         ? "N/A"
         : macro.baseScore
     }`,
+
     `Quote ${q}: ${
       macro.quoteScore === null
         ? "N/A"
         : macro.quoteScore
     }`,
+
     `Relative differential: ${
       differential === null
         ? "N/A"
         : differential
     }`,
+
     `Price/fundamental divergence: ${
       divergence.available
         ? divergence.present
@@ -395,6 +482,9 @@ function renderDecision(
           : "not detected"
         : "data unavailable"
     }`,
+
+    technicalDetails,
+
     `Technical confirmation: ${
       technical.available
         ? technical.confirmed
@@ -402,6 +492,7 @@ function renderDecision(
           : "NOT CONFIRMED"
         : "data unavailable"
     }`,
+
     "Action is rule-based decision support, not a guaranteed forecast."
   ]
     .map(x => `<li>${x}</li>`)
@@ -413,16 +504,19 @@ function renderDecision(
         <b>Direction</b><br>
         ${decision.action}
       </div>
+
       <div>
         <b>Invalidation</b><br>
         Set beyond the technical structure
         that invalidates the thesis.
       </div>
+
       <div>
         <b>Entry</b><br>
         Wait for the confirmed H1 candle-close
         structure break after the H4 setup.
       </div>
+
       <div>
         <b>Target</b><br>
         Use the next meaningful higher-timeframe
