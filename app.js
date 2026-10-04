@@ -810,6 +810,7 @@ $("pair").onchange =
    ========================= */
 
 $("calc").onclick = () => {
+
   const balance =
     +$("bal").value;
 
@@ -818,6 +819,9 @@ $("calc").onclick = () => {
 
   const stop =
     +$("stop").value;
+
+  const target =
+    +$("target").value;
 
   const pipValue =
     +$("pv").value;
@@ -829,11 +833,16 @@ $("calc").onclick = () => {
     riskPercent <= 0 ||
     !stop ||
     stop <= 0 ||
+    !target ||
+    target <= 0 ||
     !pipValue ||
     pipValue <= 0
   ) {
     $("lot").textContent =
       "Enter valid risk values.";
+
+    $("rrResult").textContent =
+      "Enter valid risk/reward values.";
 
     return;
   }
@@ -847,6 +856,19 @@ $("calc").onclick = () => {
     riskAmount /
     (stop * pipValue);
 
+  const rewardRisk =
+    target / stop;
+
+  const potentialProfit =
+    target *
+    pipValue *
+    lotSize;
+
+  const maximumLoss =
+    stop *
+    pipValue *
+    lotSize;
+
   let warning = "";
 
   if (riskPercent >= 5) {
@@ -855,9 +877,34 @@ $("calc").onclick = () => {
   }
 
   $("lot").innerHTML = `
-    <strong>Lot size: ${lotSize.toFixed(3)} lots</strong><br>
-    Risk amount: $${riskAmount.toFixed(2)}${warning}<br>
-    Maximum loss: $${riskAmount.toFixed(2)}
+    <strong>
+      Lot size: ${lotSize.toFixed(3)} lots
+    </strong><br>
+
+    Risk amount:
+    $${riskAmount.toFixed(2)}
+    ${warning}<br>
+
+    Maximum loss:
+    $${maximumLoss.toFixed(2)}
+  `;
+
+  $("rrResult").innerHTML = `
+    <strong>
+      Risk / Reward: 1:${rewardRisk.toFixed(2)}
+    </strong><br>
+
+    Stop:
+    ${stop} pips<br>
+
+    Target:
+    ${target} pips<br>
+
+    Potential profit:
+    $${potentialProfit.toFixed(2)}<br>
+
+    Potential loss:
+    $${maximumLoss.toFixed(2)}
   `;
 };
 
@@ -885,6 +932,7 @@ function logs() {
 }
 
 $("save").onclick = () => {
+
   let a =
     JSON.parse(
       localStorage.getItem(
