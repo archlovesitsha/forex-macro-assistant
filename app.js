@@ -233,9 +233,6 @@ function buildDecision(
   divergence,
   technical
 ) {
-  const [b, q] =
-    pair.split("/");
-
   if (!macro.available) {
     return {
       action: "PASS",
@@ -807,6 +804,11 @@ $("refresh").onclick =
 $("pair").onchange =
   refresh;
 
+
+/* =========================
+   RISK CALCULATOR
+   ========================= */
+
 $("calc").onclick = () => {
   const balance =
     +$("bal").value;
@@ -822,9 +824,13 @@ $("calc").onclick = () => {
 
   if (
     !balance ||
+    balance <= 0 ||
     !riskPercent ||
+    riskPercent <= 0 ||
     !stop ||
-    !pipValue
+    stop <= 0 ||
+    !pipValue ||
+    pipValue <= 0
   ) {
     $("lot").textContent =
       "Enter valid risk values.";
@@ -837,13 +843,28 @@ $("calc").onclick = () => {
     riskPercent /
     100;
 
-  const n =
+  const lotSize =
     riskAmount /
     (stop * pipValue);
 
-  $("lot").textContent =
-    `Lot size ${n.toFixed(2)} lots`;
+  let warning = "";
+
+  if (riskPercent >= 5) {
+    warning =
+      " ⚠️ High risk per trade.";
+  }
+
+  $("lot").innerHTML = `
+    <strong>Lot size: ${lotSize.toFixed(3)} lots</strong><br>
+    Risk amount: $${riskAmount.toFixed(2)}${warning}<br>
+    Maximum loss: $${riskAmount.toFixed(2)}
+  `;
 };
+
+
+/* =========================
+   JOURNAL
+   ========================= */
 
 function logs() {
   const a =
@@ -889,6 +910,11 @@ $("save").onclick = () => {
   logs();
 };
 
+
+/* =========================
+   SERVICE WORKER
+   ========================= */
+
 if (
   "serviceWorker" in navigator
 ) {
@@ -896,6 +922,11 @@ if (
     .register("sw.js")
     .catch(() => {});
 }
+
+
+/* =========================
+   INITIALISE APP
+   ========================= */
 
 renderMacro();
 analyse();
