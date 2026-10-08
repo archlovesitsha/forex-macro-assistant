@@ -9,6 +9,44 @@ const C = [
   "NZD"
 ];
 
+const STANDARD_PAIRS = [
+  "EUR/USD",
+  "GBP/USD",
+  "USD/JPY",
+  "USD/CHF",
+  "AUD/USD",
+  "USD/CAD",
+  "NZD/USD",
+
+  "EUR/GBP",
+  "EUR/JPY",
+  "EUR/CHF",
+  "EUR/AUD",
+  "EUR/CAD",
+  "EUR/NZD",
+
+  "GBP/JPY",
+  "GBP/CHF",
+  "GBP/AUD",
+  "GBP/CAD",
+  "GBP/NZD",
+
+  "CHF/JPY",
+
+  "AUD/JPY",
+  "CAD/JPY",
+  "NZD/JPY",
+
+  "AUD/CHF",
+  "CAD/CHF",
+  "NZD/CHF",
+
+  "AUD/CAD",
+  "NZD/CAD",
+
+  "NZD/AUD"
+];
+
 const state = {
 
   scores:
@@ -38,26 +76,22 @@ const $ = x =>
    PAIR LIST
    ========================================================= */
 
-for (const a of C) {
+if ($("pair")) {
 
-  for (const b of C) {
+  $("pair").innerHTML = "";
 
-    if (a !== b) {
+  STANDARD_PAIRS.forEach(pair => {
 
-      const o =
-        document.createElement("option");
+    const option =
+      document.createElement("option");
 
-      o.value =
-        a + "/" + b;
+    option.value = pair;
 
-      o.textContent =
-        a + "/" + b;
+    option.textContent = pair;
 
-      $("pair").append(o);
+    $("pair").append(option);
 
-    }
-
-  }
+  });
 
 }
 
@@ -67,6 +101,10 @@ for (const a of C) {
    ========================================================= */
 
 function renderMacro() {
+
+  if (!$("currencies")) {
+    return;
+  }
 
   $("currencies").innerHTML =
     C.map(c => `
@@ -115,44 +153,48 @@ function renderMacro() {
     });
 
 
-  $("momentum").innerHTML =
-    C.map(c => {
+  if ($("momentum")) {
 
-      const change =
-        state.scores[c] -
-        state.previous[c];
+    $("momentum").innerHTML =
+      C.map(c => {
 
-      return `
+        const change =
+          state.scores[c] -
+          state.previous[c];
 
-        <div class="momentum">
+        return `
 
-          <b>${c}</b>
+          <div class="momentum">
 
-          <span>
-            ${state.previous[c]}
-            →
-            ${state.scores[c]}
-          </span>
+            <b>${c}</b>
 
-          <span>
-            ${
-              change > 0
-                ? "↑"
-                : change < 0
-                  ? "↓"
-                  : "→"
-            }
-          </span>
+            <span>
+              ${state.previous[c]}
+              →
+              ${state.scores[c]}
+            </span>
 
-          <span>
-            ${change}
-          </span>
+            <span>
+              ${
+                change > 0
+                  ? "↑"
+                  : change < 0
+                    ? "↓"
+                    : "→"
+              }
+            </span>
 
-        </div>
+            <span>
+              ${change}
+            </span>
 
-      `;
+          </div>
 
-    }).join("");
+        `;
+
+      }).join("");
+
+  }
 
 }
 
@@ -185,77 +227,119 @@ async function api(url) {
 
 async function loadMacro(b, q) {
 
-  if (
-    !(
-      (b === "USD" && q === "EUR") ||
-      (b === "EUR" && q === "USD")
-    )
-  ) {
+  /*
+   * USD and EUR have live macro engines.
+   *
+   * For other currencies we use the
+   * current dashboard scores until their
+   * live macro engines are connected.
+   */
 
-    return {
+  let baseScore =
+    Number(state.scores[b] ?? 0);
 
-      available: false,
+  let quoteScore =
+    Number(state.scores[q] ?? 0);
 
-      differential: null,
+  let usd = null;
 
-      baseScore: null,
+  let eur = null;
 
-      quoteScore: null
+  /*
+   * Load validated live USD/EUR macro data
+   * whenever one of those currencies is involved.
+   */
 
-    };
+  try {
+
+    if (b === "USD" || q === "USD") {
+
+      usd =
+        await api(
+          "/api/usd-macro"
+        );
+
+      if (usd.success) {
+
+        const live =
+          Number(
+            usd.scores?.total ?? 0
+          );
+
+        state.previous.USD =
+          state.scores.USD;
+
+        state.scores.USD =
+          live;
+
+        baseScore =
+          b === "USD"
+            ? live
+            : baseScore;
+
+        quoteScore =
+          q === "USD"
+            ? live
+            : quoteScore;
+
+      }
+
+    }
+
+  } catch (e) {
+
+    console.warn(
+      "USD macro unavailable:",
+      e.message
+    );
 
   }
 
 
-  const usd =
-    await api("/api/usd-macro");
+  try {
 
-  const eur =
-    await api("/api/eur-macro");
+    if (b === "EUR" || q === "EUR") {
 
+      eur =
+        await api(
+          "/api/eur-macro"
+        );
 
-  if (
-    !usd.success ||
-    !eur.success
-  ) {
+      if (eur.success) {
 
-    return {
+        const live =
+          Number(
+            eur.scores?.total ?? 0
+          );
 
-      available: false,
+        state.previous.EUR =
+          state.scores.EUR;
 
-      differential: null,
+        state.scores.EUR =
+          live;
 
-      baseScore: null,
+        baseScore =
+          b === "EUR"
+            ? live
+            : baseScore;
 
-      quoteScore: null
+        quoteScore =
+          q === "EUR"
+            ? live
+            : quoteScore;
 
-    };
+      }
+
+    }
+
+  } catch (e) {
+
+    console.warn(
+      "EUR macro unavailable:",
+      e.message
+    );
 
   }
-
-
-  const usdScore =
-    Number(
-      usd.scores?.total ?? 0
-    );
-
-
-  const eurScore =
-    Number(
-      eur.scores?.total ?? 0
-    );
-
-
-  const baseScore =
-    b === "USD"
-      ? usdScore
-      : eurScore;
-
-
-  const quoteScore =
-    q === "USD"
-      ? usdScore
-      : eurScore;
 
 
   return {
@@ -271,7 +355,12 @@ async function loadMacro(b, q) {
 
     usd,
 
-    eur
+    eur,
+
+    source:
+      (usd || eur)
+        ? "LIVE + DASHBOARD"
+        : "DASHBOARD"
 
   };
 
@@ -284,12 +373,51 @@ async function loadMacro(b, q) {
 
 async function loadDivergence(b, q) {
 
-  if (
-    !(
-      (b === "EUR" && q === "USD") ||
-      (b === "USD" && q === "EUR")
-    )
-  ) {
+  const pair =
+    `${b}/${q}`;
+
+  try {
+
+    const result =
+      await api(
+        `/api/price-divergence?base=${encodeURIComponent(b)}&quote=${encodeURIComponent(q)}`
+      );
+
+
+    if (!result.success) {
+
+      return {
+
+        available: false,
+
+        present: false,
+
+        direction: null,
+
+        raw: result
+
+      };
+
+    }
+
+
+    return {
+
+      available: true,
+
+      present:
+        result.divergence === true ||
+        result.divergence === "YES" ||
+        result.divergence === "present",
+
+      direction:
+        result.direction ?? null,
+
+      raw: result
+
+    };
+
+  } catch (e) {
 
     return {
 
@@ -297,49 +425,21 @@ async function loadDivergence(b, q) {
 
       present: false,
 
-      direction: null
+      direction: null,
+
+      raw: {
+
+        success: false,
+
+        error: e.message,
+
+        pair
+
+      }
 
     };
 
   }
-
-
-  const result =
-    await api(
-      `/api/price-divergence?base=${b}&quote=${q}`
-    );
-
-
-  if (!result.success) {
-
-    return {
-
-      available: false,
-
-      present: false,
-
-      direction: null
-
-    };
-
-  }
-
-
-  return {
-
-    available: true,
-
-    present:
-      result.divergence === true ||
-      result.divergence === "YES" ||
-      result.divergence === "present",
-
-    direction:
-      result.direction ?? null,
-
-    raw: result
-
-  };
 
 }
 
@@ -350,101 +450,110 @@ async function loadDivergence(b, q) {
 
 async function loadTechnical(b, q) {
 
-  if (
-    b !== "EUR" ||
-    q !== "USD"
-  ) {
+  const pair =
+    `${b}/${q}`;
+
+  try {
+
+    const result =
+      await api(
+        `/api/technical-confirmation?pair=${encodeURIComponent(pair)}`
+      );
+
+
+    if (!result.success) {
+
+      return {
+
+        available: false,
+
+        confirmed: false,
+
+        direction: null,
+
+        value: 0,
+
+        raw: result
+
+      };
+
+    }
+
+
+    const confirmed =
+      result.technical_status ===
+        "CONFIRMED" ||
+
+      result.technical_status ===
+        "TECHNICAL_CONFIRMED";
+
+
+    let value = 0;
+
+
+    if (confirmed) {
+
+      if (
+        result.direction ===
+        "BULLISH"
+      ) {
+
+        value = 3;
+
+      }
+
+      if (
+        result.direction ===
+        "BEARISH"
+      ) {
+
+        value = -3;
+
+      }
+
+    }
+
 
     return {
 
-      available: false,
+      available: true,
 
-      confirmed: false,
+      confirmed,
 
-      direction: null,
+      direction:
+        result.direction ?? null,
 
-      value: 0,
-
-      raw: null
-
-    };
-
-  }
-
-
-  const result =
-    await api(
-      "/api/technical-confirmation"
-    );
-
-
-  if (!result.success) {
-
-    return {
-
-      available: false,
-
-      confirmed: false,
-
-      direction: null,
-
-      value: 0,
+      value,
 
       raw: result
 
     };
 
-  }
+  } catch (e) {
 
+    return {
 
-  const confirmed =
-    result.technical_status ===
-      "CONFIRMED" ||
+      available: false,
 
-    result.technical_status ===
-      "TECHNICAL_CONFIRMED";
+      confirmed: false,
 
+      direction: null,
 
-  let value = 0;
+      value: 0,
 
+      raw: {
 
-  if (confirmed) {
+        success: false,
 
-    if (
-      result.direction ===
-      "BULLISH"
-    ) {
+        error: e.message,
 
-      value = 3;
+        pair
 
-    }
+      }
 
-    if (
-      result.direction ===
-      "BEARISH"
-    ) {
-
-      value = -3;
-
-    }
+    };
 
   }
-
-
-  return {
-
-    available: true,
-
-    confirmed,
-
-    direction:
-      result.direction ?? null,
-
-    value,
-
-    raw: result
-
-  };
 
 }
 
@@ -467,7 +576,7 @@ function buildDecision(
       action: "PASS",
 
       summary:
-        "Macro data is not available for this pair in the current validated framework.",
+        "Macro data is not available for this pair.",
 
       differential: null,
 
@@ -828,7 +937,10 @@ function renderDecision(
           ? "present"
           : "not detected"
         : "data unavailable"
-    }`
+    }`,
+
+    `<strong>Macro source:</strong>
+     ${macro.source || "N/A"}`
 
   ];
 
@@ -1012,25 +1124,7 @@ function renderDecision(
 
 function getMacroPairs() {
 
-  const pairs = [];
-
-  for (const base of C) {
-
-    for (const quote of C) {
-
-      if (base !== quote) {
-
-        pairs.push(
-          `${base}/${quote}`
-        );
-
-      }
-
-    }
-
-  }
-
-  return pairs;
+  return STANDARD_PAIRS.slice();
 
 }
 
@@ -1100,8 +1194,8 @@ function renderOpportunityScanner() {
 
 
         const differential =
-          state.scores[base] -
-          state.scores[quote];
+          Number(state.scores[base] ?? 0) -
+          Number(state.scores[quote] ?? 0);
 
 
         const absolute =
@@ -1109,7 +1203,7 @@ function renderOpportunityScanner() {
 
 
         let status =
-          "MACRO ONLY";
+          "MACRO SCREEN";
 
 
         let action =
@@ -1121,43 +1215,42 @@ function renderOpportunityScanner() {
 
 
         let technical =
-          "Not available";
+          "Not checked";
 
 
         /*
-         * EUR/USD is the only pair currently
-         * connected to the full validated
-         * divergence + technical pipeline.
+         * If this is the pair currently being analysed,
+         * display the actual technical result.
          */
 
         if (
-          pair === "EUR/USD"
+          state.analysis &&
+          state.analysis.pair === pair
         ) {
 
-          if (
-            state.analysis &&
-            state.analysis.technical
-          ) {
-
-            const t =
-              state.analysis.technical;
+          const t =
+            state.analysis.technical;
 
 
-            if (
-              t.confirmed
-            ) {
+          if (t && t.available) {
+
+            if (t.confirmed) {
 
               action =
                 t.direction ===
                 "BULLISH"
-                  ? "BUY EUR/USD"
+                  ? `BUY ${pair}`
                   : t.direction ===
                     "BEARISH"
-                      ? "SELL EUR/USD"
+                      ? `SELL ${pair}`
                       : "WAIT";
 
               technical =
-                t.direction || "CONFIRMED";
+                t.direction ||
+                "CONFIRMED";
+
+              status =
+                "FULL PIPELINE";
 
             } else {
 
@@ -1167,12 +1260,12 @@ function renderOpportunityScanner() {
               technical =
                 "INCOMPLETE";
 
+              status =
+                "TECHNICAL CHECKED";
+
             }
 
           }
-
-          status =
-            "FULL PIPELINE";
 
         }
 
@@ -1222,16 +1315,26 @@ function renderOpportunityScanner() {
 
       <b>How to read this:</b>
 
-      The scanner ranks pairs by the difference
-      between their current currency scores.
+      The scanner ranks the 28 standard
+      forex pairs by the difference between
+      their current currency scores.
 
       <br><br>
 
-      Only <b>EUR/USD</b> currently has the
-      complete divergence + technical pipeline.
+      A positive differential means the
+      base currency currently has the
+      stronger score.
 
-      Other pairs are opportunity candidates,
-      not confirmed trades.
+      <br>
+
+      A negative differential means the
+      quote currency currently has the
+      stronger score.
+
+      <br><br>
+
+      Technical confirmation is checked
+      when a pair is analysed.
 
     </div>
 
@@ -1289,11 +1392,11 @@ function renderOpportunityScanner() {
 
     <p class="scanner-footer">
 
-      Showing the strongest 12 currency
-      differentials from the current scores.
+      Showing the strongest 12 of the
+      28 standard forex pairs.
 
-      This is a screening tool, not a trade
-      signal by itself.
+      This is a screening tool, not a
+      trade signal by itself.
 
     </p>
 
@@ -1338,6 +1441,11 @@ async function analyse() {
     $("pair").value;
 
 
+  if (!pair) {
+    return;
+  }
+
+
   const [b, q] =
     pair.split("/");
 
@@ -1359,7 +1467,10 @@ async function analyse() {
     ] =
       await Promise.all([
 
-        loadMacro(b, q),
+        loadMacro(
+          b,
+          q
+        ),
 
         loadDivergence(
           b,
@@ -1445,12 +1556,20 @@ async function analyse() {
       "Analysis data could not be loaded.";
 
 
-    $("dataStatus").textContent =
-      "Some live analysis data is unavailable.";
+    if ($("dataStatus")) {
+
+      $("dataStatus").textContent =
+        "Some live analysis data is unavailable.";
+
+    }
 
 
-    $("providerStatus").textContent =
-      e.message;
+    if ($("providerStatus")) {
+
+      $("providerStatus").textContent =
+        e.message;
+
+    }
 
 
     $("differential").textContent =
@@ -1485,7 +1604,7 @@ async function refresh() {
 
     const fx =
       await api(
-        `/api/fx/rate?from=${b}&to=${q}`
+        `/api/fx/rate?from=${encodeURIComponent(b)}&to=${encodeURIComponent(q)}`
       );
 
 
@@ -1612,163 +1731,183 @@ document
    BUTTONS
    ========================================================= */
 
-$("scan").onclick =
-  analyse;
+if ($("scan")) {
+
+  $("scan").onclick =
+    analyse;
+
+}
 
 
-$("refresh").onclick =
-  refresh;
+if ($("refresh")) {
+
+  $("refresh").onclick =
+    refresh;
+
+}
 
 
-$("pair").onchange =
-  refresh;
+if ($("pair")) {
+
+  $("pair").onchange =
+    refresh;
+
+}
 
 
-$("scanAll").onclick = () => {
+if ($("scanAll")) {
 
-  $("scannerStatus").textContent =
-    "Scanning currency differentials...";
+  $("scanAll").onclick = () => {
+
+    $("scannerStatus").textContent =
+      "Scanning 28 standard currency pairs...";
 
 
-  renderOpportunityScanner();
+    renderOpportunityScanner();
 
 
-  $("scannerStatus").textContent =
-    "Scan complete — ranked by fundamental differential.";
+    $("scannerStatus").textContent =
+      "Scan complete — ranked by fundamental differential.";
 
-};
+  };
+
+}
 
 
 /* =========================================================
    RISK CALCULATOR
    ========================================================= */
 
-$("calc").onclick = () => {
+if ($("calc")) {
 
-  const balance =
-    +$("bal").value;
+  $("calc").onclick = () => {
 
-
-  const riskPercent =
-    +$("rp").value;
+    const balance =
+      +$("bal").value;
 
 
-  const stop =
-    +$("stop").value;
+    const riskPercent =
+      +$("rp").value;
 
 
-  const target =
-    +$("target").value;
+    const stop =
+      +$("stop").value;
 
 
-  const pipValue =
-    +$("pv").value;
+    const target =
+      +$("target").value;
 
 
-  if (
-    !balance ||
-    balance <= 0 ||
-    !riskPercent ||
-    riskPercent <= 0 ||
-    !stop ||
-    stop <= 0 ||
-    !target ||
-    target <= 0 ||
-    !pipValue ||
-    pipValue <= 0
-  ) {
-
-    $("lot").textContent =
-      "Enter valid risk values.";
+    const pipValue =
+      +$("pv").value;
 
 
-    $("rrResult").textContent =
-      "Enter valid risk/reward values.";
+    if (
+      !balance ||
+      balance <= 0 ||
+      !riskPercent ||
+      riskPercent <= 0 ||
+      !stop ||
+      stop <= 0 ||
+      !target ||
+      target <= 0 ||
+      !pipValue ||
+      pipValue <= 0
+    ) {
+
+      $("lot").textContent =
+        "Enter valid risk values.";
 
 
-    return;
-
-  }
-
-
-  const riskAmount =
-    balance *
-    riskPercent /
-    100;
+      $("rrResult").textContent =
+        "Enter valid risk/reward values.";
 
 
-  const lotSize =
-    riskAmount /
-    (stop * pipValue);
+      return;
+
+    }
 
 
-  const rewardRisk =
-    target / stop;
+    const riskAmount =
+      balance *
+      riskPercent /
+      100;
 
 
-  const potentialProfit =
-    target *
-    pipValue *
-    lotSize;
+    const lotSize =
+      riskAmount /
+      (stop * pipValue);
 
 
-  const maximumLoss =
-    stop *
-    pipValue *
-    lotSize;
+    const rewardRisk =
+      target / stop;
 
 
-  let warning = "";
+    const potentialProfit =
+      target *
+      pipValue *
+      lotSize;
 
 
-  if (
-    riskPercent >= 5
-  ) {
-
-    warning =
-      " ⚠️ High risk per trade.";
-
-  }
+    const maximumLoss =
+      stop *
+      pipValue *
+      lotSize;
 
 
-  $("lot").innerHTML = `
-
-    <strong>
-      Lot size: ${lotSize.toFixed(3)} lots
-    </strong><br>
-
-    Risk amount:
-    $${riskAmount.toFixed(2)}
-    ${warning}<br>
-
-    Maximum loss:
-    $${maximumLoss.toFixed(2)}
-
-  `;
+    let warning = "";
 
 
-  $("rrResult").innerHTML = `
+    if (
+      riskPercent >= 5
+    ) {
 
-    <strong>
-      Risk / Reward:
-      1:${rewardRisk.toFixed(2)}
-    </strong><br>
+      warning =
+        " ⚠️ High risk per trade.";
 
-    Stop:
-    ${stop} pips<br>
+    }
 
-    Target:
-    ${target} pips<br>
 
-    Potential profit:
-    $${potentialProfit.toFixed(2)}<br>
+    $("lot").innerHTML = `
 
-    Potential loss:
-    $${maximumLoss.toFixed(2)}
+      <strong>
+        Lot size: ${lotSize.toFixed(3)} lots
+      </strong><br>
 
-  `;
+      Risk amount:
+      $${riskAmount.toFixed(2)}
+      ${warning}<br>
 
-};
+      Maximum loss:
+      $${maximumLoss.toFixed(2)}
+
+    `;
+
+
+    $("rrResult").innerHTML = `
+
+      <strong>
+        Risk / Reward:
+        1:${rewardRisk.toFixed(2)}
+      </strong><br>
+
+      Stop:
+      ${stop} pips<br>
+
+      Target:
+      ${target} pips<br>
+
+      Potential profit:
+      $${potentialProfit.toFixed(2)}<br>
+
+      Potential loss:
+      $${maximumLoss.toFixed(2)}
+
+    `;
+
+  };
+
+}
 
 
 /* =========================================================
@@ -1783,6 +1922,11 @@ function logs() {
         "fma2"
       ) || "[]"
     );
+
+
+  if (!$("logs")) {
+    return;
+  }
 
 
   $("logs").innerHTML =
@@ -1803,47 +1947,51 @@ function logs() {
 }
 
 
-$("save").onclick = () => {
+if ($("save")) {
 
-  let a =
-    JSON.parse(
-      localStorage.getItem(
-        "fma2"
-      ) || "[]"
+  $("save").onclick = () => {
+
+    let a =
+      JSON.parse(
+        localStorage.getItem(
+          "fma2"
+        ) || "[]"
+      );
+
+
+    a.unshift({
+
+      p:
+        $("jp").value,
+
+      n:
+        $("jn").value,
+
+      t:
+        new Date()
+          .toLocaleString()
+
+    });
+
+
+    localStorage.setItem(
+      "fma2",
+      JSON.stringify(a)
     );
 
 
-  a.unshift({
+    $("jp").value =
+      "";
 
-    p:
-      $("jp").value,
-
-    n:
-      $("jn").value,
-
-    t:
-      new Date()
-        .toLocaleString()
-
-  });
+    $("jn").value =
+      "";
 
 
-  localStorage.setItem(
-    "fma2",
-    JSON.stringify(a)
-  );
+    logs();
 
+  };
 
-  $("jp").value =
-    "";
-
-  $("jn").value =
-    "";
-
-
-  logs();
-
-};
+}
 
 
 /* =========================================================
@@ -1869,8 +2017,8 @@ renderMacro();
 
 renderOpportunityScanner();
 
-analyse();
-
 logs();
+
+analyse();
 
 refresh();
