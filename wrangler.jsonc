@@ -1,8 +1,9 @@
 {
-  "name": "forex-macro-assistant2",
-  "main": "worker.js",
-  "compatibility_date": "2026-09-18",
-  "assets": {
-    "directory": "."
-  }
+"name": "forex-macro-assistant2",
+"main": "worker.js",
+"compatibility_date": "2026-09-18",
+"assets": {
+"directory": ".",
+"binding": "ASSETS"
+}
 }
