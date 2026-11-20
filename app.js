@@ -219,7 +219,6 @@ async function loadMacro(base, quote) {
   };
 }
 
-
 /* =========================================================
    FUNDAMENTAL DIVERGENCE
    ========================================================= */
@@ -229,14 +228,19 @@ async function loadDivergence(base, quote) {
 
   try {
     const result = await api(
-      `/api/price-divergence?base=${encodeURIComponent(base)}&quote=${encodeURIComponent(quote)}`
+      `/api/price-divergence?pair=${encodeURIComponent(pair)}`
     );
 
-    if (!result.success) {
+    if (
+      !result ||
+      result.success !== true
+    ) {
       return {
         available: false,
         present: false,
         direction: null,
+        priceDirection: null,
+        fundamentalDirection: null,
         raw: result
       };
     }
@@ -244,10 +248,7 @@ async function loadDivergence(base, quote) {
     return {
       available: true,
 
-      present:
-        result.divergence === true ||
-        result.divergence === "YES" ||
-        result.divergence === "present",
+      present: result.divergence === true,
 
       direction: result.direction ?? null,
 
@@ -260,10 +261,14 @@ async function loadDivergence(base, quote) {
     };
 
   } catch (error) {
+    console.error("Divergence request failed:", error);
+
     return {
       available: false,
       present: false,
       direction: null,
+      priceDirection: null,
+      fundamentalDirection: null,
       raw: {
         success: false,
         error: error.message,
