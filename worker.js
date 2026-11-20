@@ -515,6 +515,10 @@ async function priceDivergence(pair, env) {
 // TWELVE DATA
 // ============================================================
 
+// ============================================================
+// TWELVE DATA
+// ============================================================
+
 async function twelveDataCandles(pair, interval, outputsize, env) {
   const key = env.TWELVE_DATA_API_KEY;
 
@@ -525,44 +529,89 @@ async function twelveDataCandles(pair, interval, outputsize, env) {
     };
   }
 
-  const symbol = pair.replace("/", "");
+  const normalizedPair = normalisePair(pair);
 
-  const url =
-    "https://api.twelvedata.com/time_series" +
-    `?symbol=${encodeURIComponent(symbol)}` +
-    `&interval=${encodeURIComponent(interval)}` +
-    `&outputsize=${outputsize}` +
-    `&apikey=${encodeURIComponent(key)}`;
+  if (!normalizedPair) {
+    return {
+      success: false,
+      error: `Invalid currency pair: ${pair}`
+    };
+  }
+
+  const [base, quote] = normalizedPair.split("/");
+
+  // Twelve Data forex symbol format
+  const symbol = `${base}/${quote}`;
+
+  const url = new URL(
+    "https://api.twelvedata.com/time_series"
+  );
+
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("interval", interval);
+  url.searchParams.set("outputsize", String(outputsize));
+  url.searchParams.set("apikey", key);
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url.toString());
+
+    const data = await response.json();
 
     if (!response.ok) {
       return {
         success: false,
-        error: `Twelve Data request failed: ${response.status}`
+        error: `Twelve Data HTTP error: ${response.status}`,
+        details: data
       };
     }
 
-    const data = await response.json();
-
-    if (data.status === "error") {
+    // Twelve Data may return an API error inside JSON
+    if (
+      data.status === "error" ||
+      data.code ||
+      data.message
+    ) {
       return {
         success: false,
-        error: data.message || "Twelve Data returned an error."
+        error: data.message || "Twelve Data API error.",
+        code: data.code || null,
+        details: data
+      };
+    }
+
+    if (!Array.isArray(data.values)) {
+      return {
+        success: false,
+        error: "Twelve Data returned no candle values.",
+        details: data
+      };
+    }
+
+    const validValues = data.values.filter(candle =>
+      candle.datetime &&
+      Number.isFinite(Number(candle.open)) &&
+      Number.isFinite(Number(candle.high)) &&
+      Number.isFinite(Number(candle.low)) &&
+      Number.isFinite(Number(candle.close))
+    );
+
+    if (validValues.length === 0) {
+      return {
+        success: false,
+        error: "Twelve Data returned invalid candle data."
       };
     }
 
     return {
       success: true,
       meta: data.meta || {},
-      values: Array.isArray(data.values) ? data.values : []
+      values: validValues
     };
 
   } catch (error) {
     return {
       success: false,
-      error: error.message
+      error: `Twelve Data connection error: ${error.message}`
     };
   }
 }
