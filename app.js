@@ -1,6 +1,6 @@
 /* =========================================================
    FOREX MACRO ASSISTANT
-   FUNDAMENTAL-ONLY VERSION
+   FUNDAMENTAL-ONLY VERSION 3.1
    ========================================================= */
 
 /* =========================================================
@@ -30,7 +30,9 @@ const state = {
   previous: Object.fromEntries(C.map(c => [c, 0])),
   quotes: {},
   calendar: [],
-  analysis: null
+  analysis: null,
+  currencyData: {},
+  pairData: {}
 };
 
 const $ = id => document.getElementById(id);
@@ -49,6 +51,74 @@ if ($("pair")) {
     option.textContent = pair;
     $("pair").append(option);
   });
+}
+
+
+/* =========================================================
+   GENERAL HELPERS
+   ========================================================= */
+
+function safeNumber(value) {
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : null;
+}
+
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[character]);
+}
+
+
+function coverageStatus(coverage) {
+  if (!Number.isFinite(Number(coverage))) {
+    return "INSUFFICIENT DATA";
+  }
+
+  if (coverage >= 80) return "CONFIRMED";
+  if (coverage >= 60) return "PROVISIONAL";
+
+  return "INSUFFICIENT DATA";
+}
+
+
+function statusClass(status) {
+  if (status === "CONFIRMED") return "quality-confirmed";
+  if (status === "PROVISIONAL") return "quality-provisional";
+
+  return "quality-insufficient";
+}
+
+
+function formatCoverage(value) {
+  const coverage = safeNumber(value);
+
+  return coverage === null
+    ? "N/A"
+    : `${coverage}%`;
+}
+
+
+function getCurrencyWarnings(data) {
+  if (!data) return [];
+
+  const warnings = [];
+
+  if (Array.isArray(data.warnings)) {
+    warnings.push(...data.warnings);
+  }
+
+  if (Array.isArray(data.dataQuality?.warnings)) {
+    warnings.push(...data.dataQuality.warnings);
+  }
+
+  return [...new Set(warnings)];
 }
 
 
@@ -133,91 +203,139 @@ async function api(url) {
 
 
 /* =========================================================
-   MACRO DATA
+   CURRENCY MACRO DATA
+   ========================================================= */
+
+async function loadCurrency(currency) {
+  if (state.currencyData[currency]) {
+    return state.currencyData[currency];
+  }
+
+  try {
+    const data = await api(
+      `/api/macro/${encodeURIComponent(currency)}`
+    );
+
+    if (data.success) {
+      state.currencyData[currency] = data;
+
+      const score = safeNumber(data.scores?.total);
+
+      if (score !== null) {
+        state.previous[currency] = state.scores[currency];
+        state.scores[currency] = score;
+      }
+
+      return data;
+    }
+  } catch (error) {
+    console.warn(`${currency} macro unavailable:`, error.message);
+  }
+
+  return null;
+}
+
+
+/* =========================================================
+   SELECTED PAIR ANALYSIS
    ========================================================= */
 
 async function loadMacro(base, quote) {
-  let usd = null;
-  let eur = null;
+  let pairResult = null;
 
-  const initialBaseScore = Number(state.scores[base] ?? 0);
-  const initialQuoteScore = Number(state.scores[quote] ?? 0);
-
-  let baseScore = initialBaseScore;
-  let quoteScore = initialQuoteScore;
-
-  const liveSources = [];
-
-  if (base === "USD" || quote === "USD") {
-    try {
-      usd = await api("/api/usd-macro");
-
-      if (
-        usd.success &&
-        Number.isFinite(Number(usd.scores?.total))
-      ) {
-        state.previous.USD = state.scores.USD;
-        state.scores.USD = Number(usd.scores.total);
-
-        if (base === "USD") {
-          baseScore = state.scores.USD;
-        }
-
-        if (quote === "USD") {
-          quoteScore = state.scores.USD;
-        }
-
-        liveSources.push("USD");
-      }
-    } catch (error) {
-      console.warn("USD macro unavailable:", error.message);
-    }
+  try {
+    pairResult = await api(
+      `/api/pair-analysis?pair=${encodeURIComponent(`${base}/${quote}`)}`
+    );
+  } catch (error) {
+    console.error("Pair analysis unavailable:", error.message);
   }
 
-  if (base === "EUR" || quote === "EUR") {
-    try {
-      eur = await api("/api/eur-macro");
+  const baseData = await loadCurrency(base);
+  const quoteData = await loadCurrency(quote);
 
-      if (
-        eur.success &&
-        Number.isFinite(Number(eur.scores?.total))
-      ) {
-        state.previous.EUR = state.scores.EUR;
-        state.scores.EUR = Number(eur.scores.total);
+  let baseScore = safeNumber(pairResult?.baseScore);
+  let quoteScore = safeNumber(pairResult?.quoteScore);
 
-        if (base === "EUR") {
-          baseScore = state.scores.EUR;
-        }
+  if (baseScore === null) {
+    baseScore = safeNumber(baseData?.scores?.total);
+  }
 
-        if (quote === "EUR") {
-          quoteScore = state.scores.EUR;
-        }
+  if (quoteScore === null) {
+    quoteScore = safeNumber(quoteData?.scores?.total);
+  }
 
-        liveSources.push("EUR");
-      }
-    } catch (error) {
-      console.warn("EUR macro unavailable:", error.message);
-    }
+  const baseCoverage =
+    safeNumber(pairResult?.baseCoverage) ??
+    safeNumber(baseData?.dataQuality?.coverage);
+
+  const quoteCoverage =
+    safeNumber(pairResult?.quoteCoverage) ??
+    safeNumber(quoteData?.dataQuality?.coverage);
+
+  const differential = safeNumber(pairResult?.differential);
+
+  const status = pairResult?.status ??
+    coverageStatus(
+      Math.min(baseCoverage ?? 0, quoteCoverage ?? 0)
+    );
+
+  const available =
+    pairResult?.available === true &&
+    differential !== null;
+
+  const warnings = [
+    ...(Array.isArray(pairResult?.warnings)
+      ? pairResult.warnings
+      : []),
+
+    ...getCurrencyWarnings(baseData),
+    ...getCurrencyWarnings(quoteData)
+  ];
+
+  if (baseScore !== null) {
+    state.previous[base] = state.scores[base];
+    state.scores[base] = baseScore;
+  }
+
+  if (quoteScore !== null) {
+    state.previous[quote] = state.scores[quote];
+    state.scores[quote] = quoteScore;
   }
 
   renderMacro();
 
-  return {
-    available: true,
+  const liveSources = [];
 
-    differential: baseScore - quoteScore,
+  if (baseData?.success) liveSources.push(base);
+  if (quoteData?.success) liveSources.push(quote);
+
+  return {
+    available,
+    differential,
 
     baseScore,
     quoteScore,
 
-    usd,
-    eur,
+    baseCoverage,
+    quoteCoverage,
+
+    status,
+    confirmed: pairResult?.confirmed === true,
+
+    warnings: [...new Set(warnings)],
+
+    baseData,
+    quoteData,
+
+    raw: pairResult,
 
     source: liveSources.length
-      ? `LIVE: ${liveSources.join(", ")} + DASHBOARD`
-      : "DASHBOARD SCORES"
+      ? `LIVE: ${[...new Set(liveSources)].join(", ")}`
+      : "LIVE DATA UNAVAILABLE"
   };
 }
+
 
 /* =========================================================
    FUNDAMENTAL DIVERGENCE
@@ -231,24 +349,26 @@ async function loadDivergence(base, quote) {
       `/api/price-divergence?pair=${encodeURIComponent(pair)}`
     );
 
-    if (
-      !result ||
-      result.success !== true
-    ) {
+    if (!result || result.success !== true) {
       return {
         available: false,
-        present: false,
+        present: null,
         direction: null,
         priceDirection: null,
         fundamentalDirection: null,
+        status: "INSUFFICIENT DATA",
+        confirmed: false,
+        warnings: [],
         raw: result
       };
     }
 
     return {
-      available: true,
+      available: result.available === true,
 
-      present: result.divergence === true,
+      present: typeof result.divergence === "boolean"
+        ? result.divergence
+        : null,
 
       direction: result.direction ?? null,
 
@@ -256,6 +376,14 @@ async function loadDivergence(base, quote) {
 
       fundamentalDirection:
         result.fundamentalDirection ?? null,
+
+      status: result.status ?? "INSUFFICIENT DATA",
+
+      confirmed: result.confirmed === true,
+
+      warnings: Array.isArray(result.dataQuality?.warnings)
+        ? result.dataQuality.warnings
+        : [],
 
       raw: result
     };
@@ -265,10 +393,13 @@ async function loadDivergence(base, quote) {
 
     return {
       available: false,
-      present: false,
+      present: null,
       direction: null,
       priceDirection: null,
       fundamentalDirection: null,
+      status: "INSUFFICIENT DATA",
+      confirmed: false,
+      warnings: [],
       raw: {
         success: false,
         error: error.message,
@@ -287,14 +418,14 @@ function buildDecision(pair, macro, divergence) {
   if (!macro.available) {
     return {
       action: "INSUFFICIENT DATA",
-      summary: "Fundamental data is unavailable.",
+      summary: "A reliable fundamental comparison cannot be calculated.",
       differential: null
     };
   }
 
-  const differential = Number(macro.differential);
+  const differential = safeNumber(macro.differential);
 
-  if (!Number.isFinite(differential)) {
+  if (differential === null) {
     return {
       action: "INSUFFICIENT DATA",
       summary: "Unable to calculate the fundamental differential.",
@@ -310,33 +441,136 @@ function buildDecision(pair, macro, divergence) {
     bias = "BEARISH";
   }
 
-  if (!divergence.available) {
+  if (macro.status === "INSUFFICIENT DATA") {
     return {
-      action: `${bias} FUNDAMENTAL BIAS`,
-      summary:
-        "Fundamental bias calculated, but price divergence data is unavailable.",
+      action: "INSUFFICIENT DATA",
+      summary: "Currency data coverage is too low for a meaningful comparison.",
       differential,
       divergence: "UNAVAILABLE"
     };
   }
 
-  if (divergence.present) {
+  const provisional = macro.status === "PROVISIONAL";
+
+  if (!divergence.available) {
+    return {
+      action: `${bias} FUNDAMENTAL BIAS`,
+      summary:
+        "Fundamental direction is available, but price divergence data is unavailable.",
+
+      differential,
+      divergence: "UNAVAILABLE",
+      provisional
+    };
+  }
+
+  if (divergence.present === true) {
     return {
       action: `${bias} FUNDAMENTAL DIVERGENCE — WATCH`,
       summary:
-        "Price movement is diverging from the fundamental outlook. Monitor the pair for a potential opportunity.",
+        "Price movement is opposing the fundamental direction. Monitor the pair for a possible opportunity.",
+
       differential,
-      divergence: "PRESENT"
+      divergence: "PRESENT",
+      provisional
     };
   }
 
   return {
     action: `${bias} FUNDAMENTAL BIAS`,
     summary:
-      "Fundamental direction identified. No opposing price movement has been detected.",
+      divergence.present === false
+        ? "Price and fundamentals are currently moving in the same direction."
+        : "Fundamental direction identified, but divergence is not yet established.",
+
     differential,
-    divergence: "NOT DETECTED"
+    divergence: divergence.present === false
+      ? "NOT DETECTED"
+      : "UNAVAILABLE",
+
+    provisional
   };
+}
+
+
+/* =========================================================
+   DATA QUALITY DISPLAY
+   ========================================================= */
+
+function renderDataQuality(macro, divergence) {
+  const container = $("dataQuality");
+
+  const status = macro.status ?? "INSUFFICIENT DATA";
+
+  const baseCoverage = formatCoverage(macro.baseCoverage);
+  const quoteCoverage = formatCoverage(macro.quoteCoverage);
+
+  const warnings = [
+    ...(macro.warnings ?? []),
+    ...(divergence.warnings ?? [])
+  ];
+
+  const uniqueWarnings = [...new Set(warnings)];
+
+  const warningHTML = uniqueWarnings.length
+    ? `
+      <ul class="quality-warnings">
+        ${uniqueWarnings.map(warning =>
+          `<li>${escapeHTML(warning)}</li>`
+        ).join("")}
+      </ul>
+    `
+    : "<p>No missing-data warnings reported.</p>";
+
+  const html = `
+    <div class="quality-card ${statusClass(status)}">
+
+      <h3>Fundamental data quality</h3>
+
+      <p>
+        <strong>Status:</strong>
+        ${escapeHTML(status)}
+      </p>
+
+      <p>
+        <strong>Base currency coverage:</strong>
+        ${baseCoverage}
+      </p>
+
+      <p>
+        <strong>Quote currency coverage:</strong>
+        ${quoteCoverage}
+      </p>
+
+      <p>
+        <strong>Divergence assessment:</strong>
+        ${escapeHTML(divergence.status ?? "UNAVAILABLE")}
+      </p>
+
+      <h4>Data warnings</h4>
+
+      ${warningHTML}
+
+      ${
+        status === "PROVISIONAL"
+          ? "<p><strong>Warning:</strong> This assessment is provisional because some indicators are missing or incomplete.</p>"
+          : ""
+      }
+
+      ${
+        status === "INSUFFICIENT DATA"
+          ? "<p><strong>Warning:</strong> Do not rely on this comparison. More data is required.</p>"
+          : ""
+      }
+
+    </div>
+  `;
+
+  if (container) {
+    container.innerHTML = html;
+  } else if ($("why")) {
+    $("why").insertAdjacentHTML("afterend", html);
+  }
 }
 
 
@@ -364,7 +598,7 @@ function renderDecision(pair, macro, divergence, decision) {
 
   if ($("divergence")) {
     $("divergence").textContent =
-      divergence.available
+      divergence.available && divergence.present !== null
         ? `Divergence ${divergence.present ? "YES" : "NO"}`
         : "Divergence N/A";
   }
@@ -375,11 +609,17 @@ function renderDecision(pair, macro, divergence, decision) {
 
   const items = [
     `Base currency: ${base}`,
-    `Base score: ${macro.baseScore}`,
+    `Base score: ${macro.baseScore ?? "N/A"}`,
+    `Base coverage: ${formatCoverage(macro.baseCoverage)}`,
+
     `Quote currency: ${quote}`,
-    `Quote score: ${macro.quoteScore}`,
+    `Quote score: ${macro.quoteScore ?? "N/A"}`,
+    `Quote coverage: ${formatCoverage(macro.quoteCoverage)}`,
+
     `Fundamental differential: ${decision.differential ?? "N/A"}`,
     `Fundamental bias: ${decision.action}`,
+
+    `Data quality status: ${macro.status}`,
 
     `Price direction: ${
       divergence.available
@@ -394,10 +634,12 @@ function renderDecision(pair, macro, divergence, decision) {
     }`,
 
     `Price divergence: ${
-      divergence.available
+      divergence.available && divergence.present !== null
         ? divergence.present ? "PRESENT" : "NOT DETECTED"
         : "UNAVAILABLE"
     }`,
+
+    `Divergence status: ${divergence.status ?? "UNAVAILABLE"}`,
 
     `Data source: ${macro.source}`,
 
@@ -406,9 +648,11 @@ function renderDecision(pair, macro, divergence, decision) {
 
   if ($("why")) {
     $("why").innerHTML = items
-      .map(item => `<li>${item}</li>`)
+      .map(item => `<li>${escapeHTML(item)}</li>`)
       .join("");
   }
+
+  renderDataQuality(macro, divergence);
 
   if ($("plan")) {
     $("plan").innerHTML = `
@@ -416,7 +660,7 @@ function renderDecision(pair, macro, divergence, decision) {
 
         <div>
           <b>Fundamental direction</b><br>
-          ${decision.action}
+          ${escapeHTML(decision.action)}
         </div>
 
         <div>
@@ -425,13 +669,18 @@ function renderDecision(pair, macro, divergence, decision) {
         </div>
 
         <div>
+          <b>Data quality</b><br>
+          ${escapeHTML(macro.status)}
+        </div>
+
+        <div>
           <b>Price divergence</b><br>
           ${
-            divergence.available
+            divergence.available && divergence.present !== null
               ? divergence.present
                 ? "Present — monitor"
                 : "Not detected"
-              : "Data unavailable"
+              : "Unavailable"
           }
         </div>
 
@@ -478,16 +727,48 @@ function renderOpportunityScanner() {
   const rows = STANDARD_PAIRS.map(pair => {
     const [base, quote] = pair.split("/");
 
+    const baseData = state.currencyData[base];
+    const quoteData = state.currencyData[quote];
+
+    const baseScore = safeNumber(baseData?.scores?.total);
+    const quoteScore = safeNumber(quoteData?.scores?.total);
+
+    const baseCoverage =
+      safeNumber(baseData?.dataQuality?.coverage);
+
+    const quoteCoverage =
+      safeNumber(quoteData?.dataQuality?.coverage);
+
     const differential =
-      Number(state.scores[base] ?? 0) -
-      Number(state.scores[quote] ?? 0);
+      baseScore !== null && quoteScore !== null
+        ? baseScore - quoteScore
+        : null;
+
+    const minimumCoverage =
+      baseCoverage !== null && quoteCoverage !== null
+        ? Math.min(baseCoverage, quoteCoverage)
+        : 0;
+
+    const status = coverageStatus(minimumCoverage);
 
     return {
       pair,
       differential,
-      absolute: Math.abs(differential),
-      strength: macroStrengthLabel(differential),
-      bias: macroBias(differential)
+      absolute: differential === null
+        ? -1
+        : Math.abs(differential),
+
+      strength: differential === null
+        ? "N/A"
+        : macroStrengthLabel(differential),
+
+      bias: differential === null
+        ? "UNAVAILABLE"
+        : macroBias(differential),
+
+      status,
+      baseCoverage,
+      quoteCoverage
     };
 
   }).sort((a, b) => b.absolute - a.absolute);
@@ -512,6 +793,11 @@ function renderOpportunityScanner() {
 
       <br><br>
 
+      Data quality is shown separately. Provisional
+      comparisons should not be treated as confirmed.
+
+      <br><br>
+
       These are fundamental screening results,
       not automatic trade instructions.
     </div>
@@ -528,9 +814,20 @@ function renderOpportunityScanner() {
       ${top.map(item => `
         <div class="scanner-row" data-pair="${item.pair}">
           <span><b>${item.pair}</b></span>
-          <span>${item.differential}</span>
+
+          <span>
+            ${item.differential ?? "N/A"}
+          </span>
+
           <span>${item.strength}</span>
-          <span>${item.bias}</span>
+
+          <span>
+            ${item.bias}
+            <br>
+            <small class="${statusClass(item.status)}">
+              ${item.status}
+            </small>
+          </span>
         </div>
       `).join("")}
 
@@ -539,6 +836,7 @@ function renderOpportunityScanner() {
     <p class="scanner-footer">
       Showing the strongest 12 of 28 pairs.
       Rankings are based on available currency scores.
+      Missing data is not treated as a zero score.
     </p>
   `;
 
@@ -588,6 +886,8 @@ async function analyse() {
       macro,
       divergence
     };
+
+    state.pairData[pair] = macro;
 
     const decision = buildDecision(
       pair,
@@ -750,7 +1050,7 @@ if ($("scanAll")) {
 
     if ($("scannerStatus")) {
       $("scannerStatus").textContent =
-        "Scan complete — ranked by fundamental differential.";
+        "Scan complete — ranked by available fundamental data.";
     }
   };
 }
@@ -849,9 +1149,9 @@ function logs() {
 
   $("logs").innerHTML = entries.map(entry => `
     <article class="card">
-      <b>${entry.p}</b>
-      <p>${entry.n}</p>
-      <small>${entry.t}</small>
+      <b>${escapeHTML(entry.p)}</b>
+      <p>${escapeHTML(entry.n)}</p>
+      <small>${escapeHTML(entry.t)}</small>
     </article>
   `).join("");
 }
