@@ -1,7 +1,7 @@
 // ============================================================
 // FOREX MACRO ASSISTANT
 // Cloudflare Workers — Fundamental Analysis Edition
-// Version: 3.0
+// Version: 3.1 — Data Quality Controls
 // ============================================================
 
 const SUPPORTED_CURRENCIES = [
@@ -21,9 +21,21 @@ const STANDARD_PAIRS = [
   "AUD/CAD", "NZD/CAD", "NZD/AUD"
 ];
 
-// ============================================================
-// CURRENCY CONFIGURATION
-// ============================================================
+const PILLAR_NAMES = [
+  "interest",
+  "inflation",
+  "growth",
+  "employment",
+  "liquidity"
+];
+
+const FRESHNESS_LIMITS = {
+  interest: 90,
+  inflation: 75,
+  growth: 180,
+  employment: 75,
+  liquidity: 45
+};
 
 const MACRO_CONFIG = {
   USD: {
@@ -134,6 +146,101 @@ function getPair(request) {
 }
 
 // ============================================================
+// DATE AND DATA QUALITY HELPERS
+// ============================================================
+
+function daysSince(dateString) {
+  if (!dateString) return null;
+
+  const date = new Date(`${dateString}T00:00:00Z`);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  const now = new Date();
+
+  const today = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+
+  const observationDay = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate()
+  );
+
+  return Math.floor(
+    (today - observationDay) / 86400000
+  );
+}
+
+function classifyCoverage(coverage) {
+  if (coverage >= 80) return "CONFIRMED";
+  if (coverage >= 60) return "PROVISIONAL";
+  return "INSUFFICIENT_DATA";
+}
+
+function createDataQuality(pillars) {
+  const available = Object.entries(pillars)
+    .filter(([, item]) =>
+      item.available === true &&
+      item.score !== null
+    )
+    .map(([name]) => name);
+
+  const missing = PILLAR_NAMES.filter(
+    name => !available.includes(name)
+  );
+
+  const stale = PILLAR_NAMES.filter(
+    name => pillars[name]?.stale === true
+  );
+
+  const coverage = Math.round(
+    available.length / PILLAR_NAMES.length * 100
+  );
+
+  const status = classifyCoverage(coverage);
+
+  const warnings = [];
+
+  if (missing.length) {
+    warnings.push(
+      `Missing indicators: ${missing.join(", ")}.`
+    );
+  }
+
+  if (stale.length) {
+    warnings.push(
+      `Stale observations excluded: ${stale.join(", ")}.`
+    );
+  }
+
+  if (status === "PROVISIONAL") {
+    warnings.push(
+      "Fundamental assessment is provisional because coverage is incomplete."
+    );
+  }
+
+  if (status === "INSUFFICIENT_DATA") {
+    warnings.push(
+      "Insufficient data for a reliable fundamental assessment."
+    );
+  }
+
+  return {
+    coverage,
+    status,
+    availablePillars: available.length,
+    totalPillars: PILLAR_NAMES.length,
+    missingPillars: missing,
+    stalePillars: stale,
+    warnings
+  };
+}
+
+// ============================================================
 // FRED DATA PROVIDER
 // ============================================================
 
@@ -169,6 +276,13 @@ async function fredSeries(seriesId, env, limit = 30) {
 
     const data = await response.json();
 
+    if (data.error_message) {
+      return {
+        success: false,
+        error: data.error_message
+      };
+    }
+
     const observations = Array.isArray(data.observations)
       ? data.observations.filter(item =>
           item.value !== "." &&
@@ -192,22 +306,23 @@ async function fredSeries(seriesId, env, limit = 30) {
 
 // ============================================================
 // FUNDAMENTAL SCORING HELPERS
-// Scores: -2 to +2
 // ============================================================
 
-function unavailable(reason) {
+function unavailable(reason, extra = {}) {
   return {
     score: null,
     available: false,
-    reason
+    reason,
+    ...extra
   };
 }
 
-function pillar(score, reason) {
+function pillar(score, reason, extra = {}) {
   return {
     score,
     available: true,
-    reason
+    reason,
+    ...extra
   };
 }
 
@@ -239,6 +354,48 @@ function getChange(observations, periods = 1) {
   if (latest === null || previous === null) return null;
 
   return latest - previous;
+}
+
+function validateObservation(name, observations) {
+  if (!Array.isArray(observations) || !observations.length) {
+    return {
+      valid: false,
+      reason: "No observations available."
+    };
+  }
+
+  const latest = observations[0];
+  const age = daysSince(latest.date);
+  const limit = FRESHNESS_LIMITS[name];
+
+  if (age === null) {
+    return {
+      valid: false,
+      reason: "Observation date is invalid."
+    };
+  }
+
+  if (age < 0) {
+    return {
+      valid: false,
+      reason: "Observation date is in the future."
+    };
+  }
+
+  if (age > limit) {
+    return {
+      valid: false,
+      stale: true,
+      ageDays: age,
+      reason: `Observation is ${age} days old; maximum allowed is ${limit} days.`
+    };
+  }
+
+  return {
+    valid: true,
+    ageDays: age,
+    observationDate: latest.date
+  };
 }
 
 function calculateInflation(observations, target) {
@@ -300,14 +457,17 @@ function calculateInflation(observations, target) {
 
 function calculateTotal(pillars) {
   const available = Object.values(pillars)
-    .filter(item => item.available && item.score !== null);
+    .filter(item =>
+      item.available === true &&
+      item.score !== null
+    );
 
   if (!available.length) {
     return {
       score: null,
       coverage: 0,
       availablePillars: 0,
-      totalPillars: Object.keys(pillars).length
+      totalPillars: PILLAR_NAMES.length
     };
   }
 
@@ -319,10 +479,49 @@ function calculateTotal(pillars) {
   return {
     score,
     coverage: Math.round(
-      available.length / Object.keys(pillars).length * 100
+      available.length / PILLAR_NAMES.length * 100
     ),
     availablePillars: available.length,
-    totalPillars: Object.keys(pillars).length
+    totalPillars: PILLAR_NAMES.length
+  };
+}
+
+// ============================================================
+// STANDARD UNAVAILABLE CURRENCY RESPONSE
+// ============================================================
+
+function unavailableCurrency(currency, config, reason) {
+  const pillars = Object.fromEntries(
+    PILLAR_NAMES.map(name => [
+      name,
+      unavailable(reason)
+    ])
+  );
+
+  const total = calculateTotal(pillars);
+
+  return {
+    success: true,
+    currency,
+    name: config.name,
+    country: config.country,
+    source: config.source || null,
+    available: false,
+    scoringMethod: "Five-pillar fundamental scoring",
+    scores: {
+      interest: null,
+      inflation: null,
+      growth: null,
+      employment: null,
+      liquidity: null,
+      total: null
+    },
+    pillars,
+    total,
+    dataQuality: createDataQuality(pillars),
+    data: {},
+    reason,
+    updatedAt: new Date().toISOString()
   };
 }
 
@@ -341,17 +540,11 @@ async function currencyMacro(currency, env) {
   }
 
   if (!config.series) {
-    return {
-      success: true,
+    return unavailableCurrency(
       currency,
-      name: config.name,
-      country: config.country,
-      available: false,
-      scores: {
-        total: null
-      },
-      reason: "Live macro indicators have not yet been configured."
-    };
+      config,
+      "Live macro indicators have not yet been configured."
+    );
   }
 
   const entries = Object.entries(config.series);
@@ -369,67 +562,87 @@ async function currencyMacro(currency, env) {
 
   const data = Object.fromEntries(results);
 
-  const interestChange = data.interest?.success
-    ? getChange(data.interest.observations)
-    : null;
+  const pillars = {};
 
-  const growthChange = data.growth?.success
-    ? getChange(data.growth.observations)
-    : null;
+  for (const name of PILLAR_NAMES) {
+    const result = data[name];
 
-  const employmentChange = data.employment?.success
-    ? getChange(data.employment.observations)
-    : null;
+    if (!result?.success) {
+      pillars[name] = unavailable(
+        result?.error || `${name} data unavailable.`
+      );
+      continue;
+    }
 
-  const liquidityChange = data.liquidity?.success
-    ? getChange(data.liquidity.observations)
-    : null;
+    const freshness = validateObservation(
+      name,
+      result.observations
+    );
 
-  const pillars = {
-    interest: interestChange === null
-      ? unavailable("Interest-rate data unavailable.")
-      : pillar(
-          trendScore(interestChange, true),
-          "Based on the latest policy-rate movement."
-        ),
+    if (!freshness.valid) {
+      pillars[name] = unavailable(
+        freshness.reason,
+        {
+          stale: freshness.stale === true,
+          ageDays: freshness.ageDays ?? null,
+          observationDate: result.observations[0]?.date || null
+        }
+      );
+      continue;
+    }
 
-    inflation: data.inflation?.success
-      ? calculateInflation(
-          data.inflation.observations,
-          config.target
-        )
-      : unavailable("Inflation data unavailable."),
+    if (name === "inflation") {
+      pillars[name] = calculateInflation(
+        result.observations,
+        config.target
+      );
+    } else {
+      const change = getChange(result.observations);
 
-    growth: growthChange === null
-      ? unavailable("Growth data unavailable.")
-      : pillar(
-          trendScore(growthChange, true),
-          "Based on the latest GDP movement; this is a basic trend indicator."
-        ),
+      if (change === null) {
+        pillars[name] = unavailable(
+          `Insufficient ${name} history.`
+        );
+      } else {
+        const positiveIsGood =
+          name !== "employment" &&
+          name !== "liquidity";
 
-    employment: employmentChange === null
-      ? unavailable("Employment data unavailable.")
-      : pillar(
-          trendScore(employmentChange, false),
-          "Based on the latest unemployment-rate movement."
-        ),
+        pillars[name] = pillar(
+          trendScore(change, positiveIsGood),
+          `Based on the latest ${name} movement.`,
+          {
+            observationDate: freshness.observationDate,
+            ageDays: freshness.ageDays
+          }
+        );
+      }
+    }
+  }
 
-    liquidity: liquidityChange === null
-      ? unavailable("Central-bank balance-sheet data unavailable.")
-      : pillar(
-          trendScore(liquidityChange, false),
-          "Based on the latest central-bank balance-sheet movement."
-        )
-  };
+  // Attach freshness information to inflation too.
+  if (pillars.inflation.available) {
+    const freshness = validateObservation(
+      "inflation",
+      data.inflation.observations
+    );
+
+    pillars.inflation.observationDate =
+      freshness.observationDate;
+
+    pillars.inflation.ageDays =
+      freshness.ageDays;
+  }
 
   const total = calculateTotal(pillars);
+  const dataQuality = createDataQuality(pillars);
 
   const latestData = {};
 
   for (const [name, result] of Object.entries(data)) {
     latestData[name] =
       result.success
-        ? result.observations[0]
+        ? result.observations[0] || null
         : null;
   }
 
@@ -440,7 +653,6 @@ async function currencyMacro(currency, env) {
     country: config.country,
     source: config.source,
     available: total.availablePillars > 0,
-
     scoringMethod: "Five-pillar fundamental scoring",
 
     scores: {
@@ -454,13 +666,14 @@ async function currencyMacro(currency, env) {
 
     pillars,
     total,
+    dataQuality,
     data: latestData,
     updatedAt: new Date().toISOString()
   };
 }
 
 // ============================================================
-// INDIVIDUAL CURRENCY ENDPOINT HELPERS
+// CURRENCY ENDPOINT HELPERS
 // ============================================================
 
 async function usdMacro(env) {
@@ -498,44 +711,76 @@ async function pairAnalysis(pair, env) {
     currencyMacro(quote, env)
   ]);
 
-  if (
-    !baseData.available ||
-    !quoteData.available ||
-    baseData.scores.total === null ||
-    quoteData.scores.total === null
-  ) {
+  const baseQuality = baseData.dataQuality;
+  const quoteQuality = quoteData.dataQuality;
+
+  const baseScore = baseData.scores.total;
+  const quoteScore = quoteData.scores.total;
+
+  const baseCoverage = baseQuality.coverage;
+  const quoteCoverage = quoteQuality.coverage;
+
+  const minimumCoverage = Math.min(
+    baseCoverage,
+    quoteCoverage
+  );
+
+  const status = classifyCoverage(minimumCoverage);
+
+  const warnings = [
+    ...baseQuality.warnings.map(
+      warning => `${base}: ${warning}`
+    ),
+    ...quoteQuality.warnings.map(
+      warning => `${quote}: ${warning}`
+    )
+  ];
+
+  if (baseScore === null || quoteScore === null) {
     return {
       success: true,
       pair,
       available: false,
+      status: "INSUFFICIENT_DATA",
       base,
       quote,
-      baseScore: baseData.scores.total,
-      quoteScore: quoteData.scores.total,
+      baseScore,
+      quoteScore,
       differential: null,
       direction: "UNAVAILABLE",
-      reason: "Both currencies need available fundamental data."
+      baseCoverage,
+      quoteCoverage,
+      warnings,
+      reason: "Both currencies need available fundamental scores."
     };
   }
 
-  const differential =
-    baseData.scores.total - quoteData.scores.total;
+  const differential = baseScore - quoteScore;
+
+  const direction =
+    differential > 0 ? "BULLISH" :
+    differential < 0 ? "BEARISH" :
+    "NEUTRAL";
 
   return {
     success: true,
     pair,
     available: true,
+    status,
+    confirmed: status === "CONFIRMED",
     base,
     quote,
-    baseScore: baseData.scores.total,
-    quoteScore: quoteData.scores.total,
+    baseScore,
+    quoteScore,
     differential,
-    direction:
-      differential > 0 ? "BULLISH" :
-      differential < 0 ? "BEARISH" :
-      "NEUTRAL",
-    baseCoverage: baseData.total.coverage,
-    quoteCoverage: quoteData.total.coverage
+    direction,
+    baseCoverage,
+    quoteCoverage,
+    warnings,
+    interpretation:
+      status === "CONFIRMED"
+        ? "Fundamental comparison meets the coverage requirement."
+        : "Fundamental comparison is provisional because one or both currencies have incomplete data."
   };
 }
 
@@ -574,7 +819,6 @@ async function fxRate(from, to, env) {
 
   try {
     const response = await fetch(url.toString());
-
     const data = await response.json();
 
     if (!response.ok || data["Error Message"] || data.Note) {
@@ -605,7 +849,6 @@ async function fxRate(from, to, env) {
 
 // ============================================================
 // PRICE DIRECTION
-// Frankfurter daily exchange-rate data
 // ============================================================
 
 async function getPriceHistory(pair) {
@@ -626,7 +869,9 @@ async function getPriceHistory(pair) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    throw new Error(`Price data request failed: ${response.status}`);
+    throw new Error(
+      `Price data request failed: ${response.status}`
+    );
   }
 
   const data = await response.json();
@@ -681,10 +926,17 @@ async function priceDivergence(pair, env) {
         success: true,
         pair,
         available: false,
+        status: "INSUFFICIENT_DATA",
+        confirmed: false,
         divergence: null,
         priceDirection: price.direction,
         fundamentalDirection: "UNAVAILABLE",
         price,
+        dataQuality: {
+          baseCoverage: fundamentals.baseCoverage,
+          quoteCoverage: fundamentals.quoteCoverage,
+          warnings: fundamentals.warnings || []
+        },
         reason: fundamentals.reason
       };
     }
@@ -697,12 +949,17 @@ async function priceDivergence(pair, env) {
       price.direction !== "NEUTRAL" &&
       fundamentalDirection !== price.direction;
 
+    const confirmed =
+      fundamentals.status === "CONFIRMED";
+
     return {
       success: true,
       pair,
       base,
       quote,
       available: true,
+      status: fundamentals.status,
+      confirmed,
       divergence,
       direction: divergence
         ? fundamentalDirection
@@ -711,9 +968,18 @@ async function priceDivergence(pair, env) {
       fundamentalDirection,
       fundamentalDifferential: fundamentals.differential,
       price,
+      dataQuality: {
+        baseCoverage: fundamentals.baseCoverage,
+        quoteCoverage: fundamentals.quoteCoverage,
+        warnings: fundamentals.warnings
+      },
       note: divergence
-        ? "Price movement is opposing the fundamental direction."
-        : "No opposing price movement is currently detected."
+        ? confirmed
+          ? "Price movement opposes the confirmed fundamental direction."
+          : "Possible divergence detected, but fundamental data coverage is provisional."
+        : confirmed
+          ? "No opposing price movement is currently detected."
+          : "No opposing price movement is detected, but the assessment is provisional."
     };
 
   } catch (error) {
@@ -742,14 +1008,30 @@ async function manualFundamentals(url) {
   }
 
   const [base, quote] = pair.split("/");
-
   const scores = {};
 
   for (const currency of SUPPORTED_CURRENCIES) {
     const value = url.searchParams.get(currency.toLowerCase());
 
     scores[currency] =
-      value === null ? 0 : safeNumber(value);
+      value === null ? null : safeNumber(value);
+  }
+
+  if (
+    scores[base] === null ||
+    scores[quote] === null
+  ) {
+    return {
+      success: true,
+      pair,
+      base,
+      quote,
+      scores,
+      available: false,
+      differential: null,
+      direction: "UNAVAILABLE",
+      reason: "Both currency scores must be supplied."
+    };
   }
 
   const differential =
@@ -760,8 +1042,8 @@ async function manualFundamentals(url) {
     pair,
     base,
     quote,
-    baseScore: scores[base],
-    quoteScore: scores[quote],
+    scores,
+    available: true,
     differential,
     direction:
       differential > 0 ? "BULLISH" :
@@ -778,22 +1060,18 @@ async function handleRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
 
-  // USD MACRO
   if (path === "/api/usd-macro") {
     return json(await usdMacro(env));
   }
 
-  // EUR MACRO
   if (path === "/api/eur-macro") {
     return json(await eurMacro(env));
   }
 
-  // ALL EIGHT CURRENCIES
   if (path === "/api/all-macro") {
     return json(await allCurrencyMacro(env));
   }
 
-  // INDIVIDUAL CURRENCY
   const currencyMatch = path.match(
     /^\/api\/macro\/([A-Z]{3})$/
   );
@@ -804,7 +1082,6 @@ async function handleRequest(request, env) {
     );
   }
 
-  // FRED SERIES
   if (path === "/api/fred") {
     const series = url.searchParams.get("series");
 
@@ -818,7 +1095,6 @@ async function handleRequest(request, env) {
     return json(await fredSeries(series, env));
   }
 
-  // LIVE FX RATE
   if (path === "/api/fx/rate") {
     const from = (
       url.searchParams.get("from") || "EUR"
@@ -831,7 +1107,6 @@ async function handleRequest(request, env) {
     return json(await fxRate(from, to, env));
   }
 
-  // PAIR ANALYSIS
   if (path === "/api/pair-analysis") {
     const pair = getPair(request);
 
@@ -845,7 +1120,6 @@ async function handleRequest(request, env) {
     return json(await pairAnalysis(pair, env));
   }
 
-  // PRICE DIVERGENCE
   if (path === "/api/price-divergence") {
     const pair = getPair(request);
 
@@ -859,24 +1133,30 @@ async function handleRequest(request, env) {
     return json(await priceDivergence(pair, env));
   }
 
-  // MANUAL FUNDAMENTAL SCORES
   if (path === "/api/fundamentals") {
     return json(await manualFundamentals(url));
   }
 
-  // HEALTH CHECK
   if (path === "/api/health") {
     return json({
       success: true,
       app: "Forex Macro Assistant",
-      version: "3.0 Fundamental Analysis",
+      version: "3.1 Fundamental Analysis",
       currencies: SUPPORTED_CURRENCIES,
       pairs: STANDARD_PAIRS.length,
       analysis: [
-        "Fundamental scoring",
+        "Five-pillar fundamental scoring",
         "Currency strength comparison",
-        "Price/fundamental divergence"
+        "Price/fundamental divergence",
+        "Data coverage validation",
+        "Observation freshness validation"
       ],
+      dataQualityRules: {
+        confirmed: "80-100%",
+        provisional: "60-79%",
+        insufficient: "Below 60%",
+        staleObservationsExcluded: true
+      },
       technicalAnalysis: "Not included",
       tradeSignals: "Not generated",
       providers: {
@@ -886,7 +1166,6 @@ async function handleRequest(request, env) {
     });
   }
 
-  // STATIC PWA ASSETS
   if (env.ASSETS) {
     return env.ASSETS.fetch(request);
   }
